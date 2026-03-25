@@ -1,0 +1,606 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<title>Coupang Bot</title>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;600&display=swap');
+
+:root {
+  --blue:   #2FA4D7;
+  --cream:  #F5E9D8;
+  --brown:  #3E2C23;
+  --orange: #E76F2E;
+  --white:  #FDFAF6;
+  --text:   #3E2C23;
+  --dim:    #9E8A7A;
+  --card:   #FFFFFF;
+  --bg:     #F5E9D8;
+  --border: #E8D9C5;
+  --green:  #2abf7e;
+  --red:    #e74c3c;
+  --yellow: #f0a500;
+}
+
+* { margin:0; padding:0; box-sizing:border-box; }
+
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: 'Plus Jakarta Sans', sans-serif;
+  min-height: 100vh;
+  font-size: 14px;
+}
+
+/* ── Sidebar ── */
+.sidebar {
+  position: fixed; left:0; top:0; bottom:0; width:220px;
+  background: var(--brown);
+  display: flex; flex-direction: column;
+  z-index: 10;
+}
+
+.sidebar-logo {
+  padding: 24px 20px 20px;
+  border-bottom: 1px solid rgba(255,255,255,.08);
+  display: flex; align-items: center; gap: 10px;
+}
+.logo-icon {
+  width: 36px; height: 36px; border-radius: 9px;
+  background: var(--orange);
+  display: flex; align-items: center; justify-content: center;
+  font-size: 18px; flex-shrink: 0;
+}
+.logo-text { font-size: 16px; font-weight: 800; color: var(--cream); letter-spacing: -.3px; }
+.logo-text span { color: var(--orange); }
+
+.sidebar-nav { padding: 16px 12px; flex: 1; display: flex; flex-direction: column; gap: 3px; }
+
+.nav-label { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 1px; color: rgba(245,233,216,.35); padding: 8px 8px 4px; }
+
+.nav-item {
+  display: flex; align-items: center; gap: 10px;
+  padding: 10px 12px; border-radius: 8px;
+  color: rgba(245,233,216,.6); font-size: 13px; font-weight: 500;
+  cursor: pointer; transition: all .2s; text-decoration: none;
+}
+.nav-item:hover { background: rgba(255,255,255,.06); color: var(--cream); }
+.nav-item.active { background: var(--orange); color: #fff; font-weight: 600; }
+.nav-icon { font-size: 16px; width: 20px; text-align: center; }
+
+.sidebar-bottom {
+  padding: 16px 12px;
+  border-top: 1px solid rgba(255,255,255,.08);
+}
+
+.run-status {
+  background: rgba(255,255,255,.06); border-radius: 10px;
+  padding: 12px 14px; display: flex; align-items: center; gap: 10px;
+}
+.run-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--dim); flex-shrink:0; transition: all .3s; }
+.run-dot.on { background: var(--green); box-shadow: 0 0 7px var(--green); animation: pulse 1.3s infinite; }
+@keyframes pulse { 0%,100%{opacity:1}50%{opacity:.25} }
+.run-info { flex:1; }
+.run-label { font-size: 11px; font-weight: 700; color: rgba(245,233,216,.5); text-transform: uppercase; letter-spacing: .7px; }
+.run-val { font-size: 13px; font-weight: 600; color: var(--cream); }
+
+/* ── Main ── */
+.main {
+  margin-left: 220px;
+  padding: 28px 28px 40px;
+  min-height: 100vh;
+}
+
+/* ── Top bar ── */
+.topbar {
+  display: flex; align-items: center; justify-content: space-between;
+  margin-bottom: 24px;
+}
+.page-title { font-size: 22px; font-weight: 800; color: var(--brown); letter-spacing: -.4px; }
+.page-sub { font-size: 13px; color: var(--dim); margin-top: 1px; }
+
+.topbar-actions { display: flex; gap: 10px; align-items: center; }
+
+/* ── Chrome alert ── */
+.chrome-alert {
+  background: var(--card); border: 1px solid var(--border); border-radius: 12px;
+  padding: 14px 18px; margin-bottom: 20px;
+  display: flex; align-items: center; gap: 14px; flex-wrap: wrap;
+}
+.ca-icon { font-size: 22px; flex-shrink:0; }
+.ca-text { flex: 1; min-width: 160px; }
+.ca-title { font-size: 13px; font-weight: 700; color: var(--brown); margin-bottom: 2px; }
+.ca-sub { font-size: 12px; color: var(--dim); }
+.cdp-badge {
+  display: flex; align-items: center; gap: 6px;
+  padding: 6px 12px; border-radius: 100px;
+  border: 1.5px solid var(--border); background: var(--bg);
+  font-size: 12px; font-weight: 600;
+}
+.cdp-dot2 { width: 7px; height: 7px; border-radius: 50%; background: #ccc; flex-shrink:0; transition: all .3s; }
+.cdp-dot2.ok { background: var(--green); box-shadow: 0 0 6px var(--green); }
+
+/* ── Stats row ── */
+.stats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 14px; margin-bottom: 22px; }
+
+.stat-card {
+  background: var(--card); border: 1px solid var(--border); border-radius: 14px;
+  padding: 18px 20px; position: relative; overflow: hidden;
+}
+.stat-card::before {
+  content: ''; position: absolute; top: 0; left: 0; right: 0; height: 3px;
+  background: var(--blue); border-radius: 14px 14px 0 0;
+}
+.stat-card.orange::before { background: var(--orange); }
+.stat-card.green::before { background: var(--green); }
+.stat-card.brown::before { background: var(--brown); }
+
+.stat-icon { font-size: 22px; margin-bottom: 10px; }
+.stat-label { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .8px; color: var(--dim); margin-bottom: 4px; }
+.stat-value { font-family: 'JetBrains Mono', monospace; font-size: 30px; font-weight: 700; color: var(--brown); }
+
+/* ── Grid ── */
+.content-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+
+.panel {
+  background: var(--card); border: 1px solid var(--border); border-radius: 14px; overflow: hidden;
+}
+.panel-head {
+  padding: 14px 18px; border-bottom: 1px solid var(--border);
+  display: flex; align-items: center; justify-content: space-between;
+}
+.panel-title { font-size: 13px; font-weight: 700; color: var(--brown); }
+.panel-sub { font-size: 11px; color: var(--dim); }
+.panel-body { padding: 16px 18px; }
+
+/* ── Form ── */
+.row2 { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 10px; }
+.fg { display: flex; flex-direction: column; gap: 5px; }
+label { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .7px; color: var(--dim); }
+input {
+  background: var(--bg); border: 1.5px solid var(--border); border-radius: 8px;
+  color: var(--brown); font-family: 'JetBrains Mono', monospace; font-size: 12px;
+  padding: 9px 12px; outline: none; transition: border-color .2s; width: 100%;
+}
+input:focus { border-color: var(--blue); }
+input::placeholder { color: var(--dim); }
+.hint { font-size: 10px; color: var(--dim); margin-bottom: 8px; }
+.hint code { color: var(--blue); font-family: 'JetBrains Mono', monospace; background: rgba(47,164,215,.1); padding: 1px 5px; border-radius: 3px; }
+
+.btn-add {
+  width: 100%; padding: 11px; background: rgba(47,164,215,.08); border: 1.5px dashed rgba(47,164,215,.4);
+  border-radius: 8px; color: var(--blue); font-family: 'Plus Jakarta Sans', sans-serif;
+  font-size: 13px; font-weight: 700; cursor: pointer; transition: all .2s;
+}
+.btn-add:hover { background: rgba(47,164,215,.14); border-color: var(--blue); }
+
+/* ── Tasks list ── */
+.tasks { display: flex; flex-direction: column; gap: 8px; max-height: 340px; overflow-y: auto; }
+.tasks::-webkit-scrollbar { width: 3px; }
+.tasks::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+
+.task {
+  background: var(--bg); border: 1.5px solid var(--border); border-radius: 10px;
+  padding: 12px 14px; display: flex; align-items: flex-start; gap: 10px;
+  transition: border-color .2s; animation: fadeUp .2s ease;
+}
+@keyframes fadeUp { from{opacity:0;transform:translateY(-5px)}to{opacity:1;transform:none} }
+.task:hover { border-color: rgba(47,164,215,.4); }
+
+.t-num {
+  width: 26px; height: 26px; border-radius: 7px; flex-shrink: 0;
+  background: var(--blue); color: #fff;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 11px; font-weight: 700;
+}
+.t-info { flex: 1; min-width: 0; }
+.t-kw { font-size: 13px; font-weight: 700; color: var(--brown); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; margin-bottom: 2px; }
+.t-tgt { font-family: 'JetBrains Mono', monospace; font-size: 10px; color: var(--dim); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; margin-bottom: 6px; }
+.tags { display: flex; flex-wrap: wrap; gap: 4px; }
+.tag { padding: 2px 7px; border-radius: 4px; font-size: 10px; font-weight: 700; }
+.tf { background: rgba(47,164,215,.12); color: var(--blue); }
+.tc { background: rgba(231,111,46,.12); color: var(--orange); }
+.t-del { background: transparent; border: none; color: var(--dim); cursor: pointer; padding: 3px 6px; font-size: 14px; transition: color .2s; }
+.t-del:hover { color: var(--red); }
+.empty { text-align: center; padding: 36px; color: var(--dim); font-size: 13px; }
+
+/* ── Buttons ── */
+.btn {
+  display: flex; align-items: center; justify-content: center; gap: 7px;
+  padding: 11px 22px; border-radius: 9px; font-family: 'Plus Jakarta Sans', sans-serif;
+  font-size: 13px; font-weight: 700; cursor: pointer; transition: all .2s; border: none;
+}
+.btn-run { background: var(--orange); color: #fff; flex: 1; }
+.btn-run:hover:not(:disabled) { background: #d4601f; transform: translateY(-1px); box-shadow: 0 6px 20px rgba(231,111,46,.3); }
+.btn-run:disabled { opacity: .35; cursor: not-allowed; transform: none; box-shadow: none; }
+.btn-stop { background: transparent; border: 1.5px solid var(--red); color: var(--red); }
+.btn-stop:hover:not(:disabled) { background: rgba(231,76,60,.06); }
+.btn-stop:disabled { opacity: .3; cursor: not-allowed; }
+.btn-save { background: var(--bg); border: 1.5px solid var(--border); color: var(--brown); }
+.btn-save:hover { border-color: var(--blue); color: var(--blue); }
+.btn-chrome-open {
+  padding: 9px 18px; border-radius: 8px; border: none; cursor: pointer;
+  background: var(--blue); color: #fff; font-family: 'Plus Jakarta Sans', sans-serif;
+  font-size: 13px; font-weight: 700; transition: all .2s; white-space: nowrap;
+}
+.btn-chrome-open:hover:not(:disabled) { background: #268fc0; transform: translateY(-1px); }
+.btn-chrome-open:disabled { opacity: .4; cursor: not-allowed; }
+.btn-chrome-open.close { background: transparent; border: 1.5px solid var(--red); color: var(--red); }
+.btn-chrome-open.close:hover:not(:disabled) { background: rgba(231,76,60,.06); }
+
+.controls { grid-column: 1/-1; display: flex; gap: 10px; }
+
+/* ── Log ── */
+.log-panel { grid-column: 1/-1; }
+.log-box {
+  background: var(--brown); padding: 14px 16px; height: 230px; overflow-y: auto;
+  font-family: 'JetBrains Mono', monospace; font-size: 12px; line-height: 1.9;
+  border-radius: 0 0 14px 14px;
+}
+.log-box::-webkit-scrollbar { width: 3px; }
+.log-box::-webkit-scrollbar-thumb { background: rgba(255,255,255,.15); border-radius: 2px; }
+.ll { white-space: pre-wrap; word-break: break-all; }
+.ll.s { color: #4de8a2; }
+.ll.e { color: #ff6b6b; }
+.ll.w { color: #ffcc66; }
+.ll.i { color: #7dd4fc; }
+.ll.d { color: rgba(245,233,216,.4); }
+.btn-sm {
+  background: transparent; border: 1.5px solid var(--border); color: var(--dim);
+  padding: 5px 12px; border-radius: 6px; font-size: 11px; cursor: pointer;
+  font-family: 'Plus Jakarta Sans', sans-serif; font-weight: 600; transition: all .2s;
+}
+.btn-sm:hover { color: var(--brown); border-color: var(--dim); }
+
+/* ── Screenshots ── */
+.shots-panel { grid-column: 1/-1; }
+.shots-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 10px; padding: 14px; }
+.shot {
+  border: 1.5px solid var(--border); border-radius: 9px; overflow: hidden; cursor: pointer;
+  transition: all .2s; background: var(--bg);
+}
+.shot:hover { border-color: var(--blue); transform: scale(1.03); box-shadow: 0 4px 16px rgba(47,164,215,.15); }
+.shot img { width: 100%; height: 85px; object-fit: cover; display: block; }
+.shot-n { padding: 5px 8px; font-size: 9px; color: var(--dim); font-family: 'JetBrains Mono',monospace; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.no-shots { padding: 30px; text-align: center; color: var(--dim); font-size: 13px; }
+
+/* ── Modal ── */
+.modal { display: none; position: fixed; inset: 0; background: rgba(62,44,35,.85); z-index: 100; align-items: center; justify-content: center; backdrop-filter: blur(6px); }
+.modal.open { display: flex; }
+.modal img { max-width: 92vw; max-height: 92vh; border-radius: 10px; border: 1px solid var(--border); box-shadow: 0 24px 80px rgba(0,0,0,.4); }
+.modal-x { position: fixed; top: 16px; right: 20px; background: var(--card); border: 1.5px solid var(--border); color: var(--brown); width: 38px; height: 38px; border-radius: 50%; font-size: 18px; cursor: pointer; display: flex; align-items: center; justify-content: center; transition: all .2s; }
+.modal-x:hover { border-color: var(--red); color: var(--red); }
+
+/* ── Toast ── */
+.toast { position: fixed; bottom: 22px; right: 22px; background: var(--brown); color: var(--cream); border: 1px solid rgba(255,255,255,.1); border-radius: 10px; padding: 11px 18px; font-size: 13px; font-weight: 600; z-index: 200; transform: translateY(50px); opacity: 0; transition: all .3s; }
+.toast.show { transform: translateY(0); opacity: 1; }
+.toast.ok { border-color: var(--green); color: #4de8a2; }
+.toast.err { border-color: var(--red); color: #ff6b6b; }
+</style>
+</head>
+<body>
+
+<!-- Sidebar -->
+<aside class="sidebar">
+  <div class="sidebar-logo">
+    <div class="logo-icon">🛒</div>
+    <div class="logo-text">Coupang<span>Bot</span></div>
+  </div>
+
+  <nav class="sidebar-nav">
+    <div class="nav-label">Управление</div>
+    <div class="nav-item active"><span class="nav-icon">⚡</span> Панель</div>
+    <div class="nav-item" onclick="loadShots()"><span class="nav-icon">📸</span> Скриншоты</div>
+
+    <div class="nav-label" style="margin-top:8px">Настройки</div>
+    <div class="nav-item"><span class="nav-icon">📋</span> Задачи</div>
+  </nav>
+
+  <div class="sidebar-bottom">
+    <div class="run-status">
+      <div class="run-dot" id="runDot"></div>
+      <div class="run-info">
+        <div class="run-label">Статус</div>
+        <div class="run-val" id="runVal">Остановлен</div>
+      </div>
+    </div>
+  </div>
+</aside>
+
+<!-- Main -->
+<main class="main">
+
+  <!-- Topbar -->
+  <div class="topbar">
+    <div>
+      <div class="page-title">Панель управления</div>
+      <div class="page-sub">Coupang автоматизация корзины</div>
+    </div>
+    <div class="topbar-actions">
+      <button class="btn btn-save" onclick="saveAndToast()">💾 Сохранить</button>
+      <button class="btn btn-run" id="btnRun" onclick="startBot()">▶ Запустить</button>
+      <button class="btn btn-stop" id="btnStop" onclick="stopBot()" disabled>■ Стоп</button>
+    </div>
+  </div>
+
+  <!-- Chrome alert -->
+  <div class="chrome-alert">
+    <div class="ca-icon">🌐</div>
+    <div class="ca-text">
+      <div class="ca-title">Шаг 1 — Открой Chrome перед запуском</div>
+      <div class="ca-sub">Сервер запустит Chrome инкогнито с нужными флагами. Затем зайди на coupang.com.</div>
+    </div>
+    <div class="cdp-badge">
+      <div class="cdp-dot2" id="cdpDot"></div>
+      <span id="cdpLabel">Не запущен</span>
+    </div>
+    <button class="btn-chrome-open" id="btnChrome" onclick="openChrome()">Открыть Chrome</button>
+  </div>
+
+  <!-- Stats -->
+  <div class="stats">
+    <div class="stat-card">
+      <div class="stat-icon">📋</div>
+      <div class="stat-label">Всего задач</div>
+      <div class="stat-value" id="sTasks">0</div>
+    </div>
+    <div class="stat-card orange">
+      <div class="stat-icon">✅</div>
+      <div class="stat-label">Добавлено</div>
+      <div class="stat-value" id="sAdded">0</div>
+    </div>
+    <div class="stat-card brown">
+      <div class="stat-icon">❌</div>
+      <div class="stat-label">Не найдено</div>
+      <div class="stat-value" id="sMissed">0</div>
+    </div>
+    <div class="stat-card green">
+      <div class="stat-icon">📸</div>
+      <div class="stat-label">Скриншоты</div>
+      <div class="stat-value" id="sShots">0</div>
+    </div>
+  </div>
+
+  <!-- Content grid -->
+  <div class="content-grid">
+
+    <!-- Add task -->
+    <div class="panel">
+      <div class="panel-head">
+        <div class="panel-title">Новая задача</div>
+        <div class="panel-sub">Добавь товар для поиска</div>
+      </div>
+      <div class="panel-body">
+        <div class="row2">
+          <div class="fg"><label>Поисковый запрос</label><input id="iKw" placeholder="강아지 장난감"></div>
+          <div class="fg"><label>Название товара</label><input id="iTgt" placeholder="그린홈 강아지..."></div>
+        </div>
+        <div class="row2">
+          <div class="fg"><label>Фильтры (запятая)</label><input id="iFlt" placeholder="rocket, 공/볼"></div>
+          <div class="fg"><label>Фильтр цены</label><input id="iCost" placeholder="1만 6천원 이상"></div>
+        </div>
+        <div class="hint">Для фильтра доставки Rocket пиши: <code>rocket</code></div>
+        <button class="btn-add" onclick="addTask()">+ Добавить задачу</button>
+      </div>
+    </div>
+
+    <!-- Task list -->
+    <div class="panel">
+      <div class="panel-head">
+        <div class="panel-title">Список задач</div>
+        <span style="font-family:'JetBrains Mono',monospace;font-size:12px;color:var(--dim)" id="tCnt">0 задач</span>
+      </div>
+      <div class="panel-body" style="padding:12px;">
+        <div class="tasks" id="tasksList"><div class="empty">Добавь задачи слева →</div></div>
+      </div>
+    </div>
+
+    <!-- Controls -->
+    <div class="controls" style="grid-column:1/-1;display:flex;gap:10px;">
+    </div>
+
+    <!-- Log -->
+    <div class="panel log-panel">
+      <div class="panel-head">
+        <div class="panel-title">Лог выполнения</div>
+        <button class="btn-sm" onclick="clearLog()">Очистить</button>
+      </div>
+      <div class="log-box" id="logBox"><div class="ll d">Жду запуска...</div></div>
+    </div>
+
+    <!-- Screenshots -->
+    <div class="panel shots-panel">
+      <div class="panel-head">
+        <div class="panel-title">Скриншоты</div>
+        <button class="btn-sm" onclick="loadShots()">Обновить</button>
+      </div>
+      <div id="shotsWrap"><div class="no-shots">Появятся после завершения</div></div>
+    </div>
+
+  </div>
+</main>
+
+<div class="modal" id="modal" onclick="closeModal()">
+  <button class="modal-x" onclick="closeModal()">✕</button>
+  <img id="mImg" src="" alt="">
+</div>
+<div class="toast" id="toast"></div>
+
+<script>
+let tasks=[], nA=0, nM=0;
+
+async function init(){
+  await loadConfig();
+  await loadShots();
+  connectSSE();
+  pollStatus();
+}
+
+async function loadConfig(){
+  try{
+    const d=await fetch('/api/config').then(r=>r.json());
+    tasks=d.tasks||[]; render();
+  }catch(_){}
+}
+
+async function pollStatus(){
+  try{
+    const d=await fetch('/api/status').then(r=>r.json());
+    setCDP(d.cdpReady);
+  }catch(_){}
+  setTimeout(pollStatus,3000);
+}
+
+function setCDP(ok){
+  document.getElementById('cdpDot').className='cdp-dot2'+(ok?' ok':'');
+  const lbl=document.getElementById('cdpLabel');
+  lbl.textContent=ok?'✓ Готов':'Не запущен';
+  lbl.style.color=ok?'var(--green)':'var(--dim)';
+  const btn=document.getElementById('btnChrome');
+  if(ok){
+    btn.textContent='Chrome запущен';
+    btn.className='btn-chrome-open close';
+    btn.onclick=closeChrome;
+  } else {
+    btn.textContent='Открыть Chrome';
+    btn.className='btn-chrome-open';
+    btn.onclick=openChrome;
+  }
+}
+
+async function openChrome(){
+  const btn=document.getElementById('btnChrome');
+  btn.disabled=true; btn.textContent='Запускаю...';
+  log('Открываю Chrome...','i');
+  try{
+    const d=await fetch('/api/open-chrome',{method:'POST'}).then(r=>r.json());
+    if(d.ok){toast('Chrome запущен!','ok');log('✓ Зайди на coupang.com','s');}
+    else{toast(d.error,'err');log('❌ '+d.error,'e');}
+  }catch(e){toast('Ошибка','err');}
+  btn.disabled=false;
+}
+async function closeChrome(){ await fetch('/api/close-chrome',{method:'POST'}); toast('Chrome закрыт','ok'); }
+
+function render(){
+  const el=document.getElementById('tasksList');
+  document.getElementById('tCnt').textContent=tasks.length+' задач';
+  document.getElementById('sTasks').textContent=tasks.length;
+  if(!tasks.length){el.innerHTML='<div class="empty">Добавь задачи слева →</div>';return;}
+  el.innerHTML=tasks.map((t,i)=>`
+    <div class="task">
+      <div class="t-num">${i+1}</div>
+      <div class="t-info">
+        <div class="t-kw">${x(t.keyword)}</div>
+        <div class="t-tgt">${x(t.target_name)}</div>
+        <div class="tags">
+          ${(t.filters||[]).map(f=>`<span class="tag tf">${x(f)}</span>`).join('')}
+          ${(t.cost||[]).map(c=>`<span class="tag tc">₩ ${x(c)}</span>`).join('')}
+        </div>
+      </div>
+      <button class="t-del" onclick="del(${i})">✕</button>
+    </div>`).join('');
+}
+
+function addTask(){
+  const kw=document.getElementById('iKw').value.trim();
+  const tgt=document.getElementById('iTgt').value.trim();
+  const fRaw=document.getElementById('iFlt').value.trim();
+  const cRaw=document.getElementById('iCost').value.trim();
+  if(!kw||!tgt){toast('Заполни запрос и название','err');return;}
+  tasks.push({keyword:kw,target_name:tgt,
+    filters:fRaw?fRaw.split(',').map(s=>s.trim()).filter(Boolean):[],
+    cost:cRaw?[cRaw.trim()]:[]});
+  render();
+  ['iKw','iTgt','iFlt','iCost'].forEach(id=>document.getElementById(id).value='');
+  toast('Задача добавлена','ok');
+}
+function del(i){tasks.splice(i,1);render();}
+
+async function saveConfig(){
+  const r=await fetch('/api/config',{method:'POST',
+    headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({settings:{base_url:'https://www.coupang.com',max_pages_to_search:3},tasks})});
+  return(await r.json()).ok;
+}
+async function saveAndToast(){ const ok=await saveConfig(); toast(ok?'Сохранено!':'Ошибка',ok?'ok':'err'); }
+
+async function startBot(){
+  if(!tasks.length){toast('Добавь задачу','err');return;}
+  const st=await fetch('/api/status').then(r=>r.json());
+  if(!st.cdpReady){toast('Сначала открой Chrome!','err');log('❌ Chrome не готов','e');return;}
+  await saveConfig();
+  nA=0;nM=0;
+  document.getElementById('sAdded').textContent='0';
+  document.getElementById('sMissed').textContent='0';
+  clearLog();log('▶ Запускаю бота...','i');
+  const d=await fetch('/api/start',{method:'POST'}).then(r=>r.json());
+  if(!d.ok)toast(d.error,'err');
+}
+async function stopBot(){ await fetch('/api/stop',{method:'POST'}); }
+
+function setRunning(on){
+  const dot=document.getElementById('runDot');
+  const val=document.getElementById('runVal');
+  dot.className='run-dot'+(on?' on':'');
+  val.textContent=on?'Работает':'Остановлен';
+  document.getElementById('btnRun').disabled=on;
+  document.getElementById('btnStop').disabled=!on;
+}
+
+function connectSSE(){
+  const es=new EventSource('/events');
+  es.onmessage=e=>{
+    const d=JSON.parse(e.data);
+    if(d.type==='log'){
+      const t=d.data;let c='d';
+      if(t.includes('✓')||t.includes('Добавлено')){c='s';nA++;document.getElementById('sAdded').textContent=nA;}
+      else if(t.includes('❌')||t.includes('Ошибка'))c='e';
+      else if(t.includes('⚠')||t.includes('✗')){c='w';nM++;document.getElementById('sMissed').textContent=nM;}
+      else if(t.includes('===')||t.includes('▶')||t.includes('ПОИСК'))c='i';
+      log(t,c);
+    }
+    if(d.type==='status')setRunning(d.data==='running');
+    if(d.type==='screenshot'){loadShots();toast('Скриншот готов!','ok');}
+  };
+  es.onerror=()=>setTimeout(connectSSE,3000);
+}
+
+function log(t,c='d'){
+  const b=document.getElementById('logBox');
+  const el=document.createElement('div');el.className='ll '+c;el.textContent=t;
+  b.appendChild(el);b.scrollTop=b.scrollHeight;
+}
+function clearLog(){document.getElementById('logBox').innerHTML='';}
+
+async function loadShots(){
+  try{
+    const files=await fetch('/api/screenshots').then(r=>r.json());
+    document.getElementById('sShots').textContent=files.length;
+    const w=document.getElementById('shotsWrap');
+    if(!files.length){w.innerHTML='<div class="no-shots">Появятся после завершения</div>';return;}
+    w.innerHTML=`<div class="shots-grid">${files.map(f=>`
+      <div class="shot" onclick="openM('${f}')">
+        <img src="/api/screenshots/${f}" loading="lazy">
+        <div class="shot-n">${f}</div>
+      </div>`).join('')}</div>`;
+  }catch(_){}
+}
+
+function openM(f){document.getElementById('mImg').src=`/api/screenshots/${f}`;document.getElementById('modal').classList.add('open');}
+function closeModal(){document.getElementById('modal').classList.remove('open');}
+function x(s){return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');}
+
+let _t;
+function toast(msg,type=''){
+  const t=document.getElementById('toast');t.textContent=msg;t.className='toast show '+type;
+  clearTimeout(_t);_t=setTimeout(()=>t.className='toast',2800);
+}
+
+document.addEventListener('keydown',e=>{
+  if(e.key==='Enter'&&['iKw','iTgt','iFlt','iCost'].includes(e.target.id))addTask();
+});
+
+init();
+</script>
+</body>
+</html>

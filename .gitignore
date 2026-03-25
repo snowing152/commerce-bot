@@ -1,0 +1,18 @@
+# Node dependencies (These should never be committed as they are large and OS-dependent)
+node_modules/
+
+# Generated application outputs (Keeps the repository clean of runtime files)
+screenshots/
+
+# Local configuration and secrets (Best practice to prevent leaking API keys or credentials)
+config.json
+.env
+
+# Compiled TypeScript output (Standard directories for compiled .js files)
+dist/
+build/
+out/
+
+# OS-generated files (Prevents cluttering the repository with system cache)
+.DS_Store
+Thumbs.db

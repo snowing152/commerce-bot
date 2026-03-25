@@ -1,0 +1,6 @@
+{
+  "search_bar": "input.headerSearchKeyword",
+  "search_button": "button.headerSearchBtn",
+  "add_to_cart_btn": "button.prod-cart-btn",
+  "cart_link": "#wa-cart-link"
+}
