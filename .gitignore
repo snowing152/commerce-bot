@@ -1,5 +1,7 @@
 # Node dependencies (These should never be committed as they are large and OS-dependent)
 node_modules/
+chrome_debug_profile/
+.env
 
 # Generated application outputs (Keeps the repository clean of runtime files)
 screenshots/

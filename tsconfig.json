@@ -1,10 +1,13 @@
 {
   "compilerOptions": {
-    "target": "ES2022",                                  /* Use modern JavaScript execution features */
-    "module": "CommonJS",                                /* Standard module system used by Node.js */
-    "strict": true,                                      /* Enable all strict type-checking options for robust code */
-    "esModuleInterop": true,                             /* Allow default imports from CommonJS modules safely */
-    "skipLibCheck": true,                                /* Skip type checking of external declaration files for faster builds */
-    "forceConsistentCasingInFileNames": true             /* Prevent import errors across different operating systems */
-  }
+    "target": "ES2022",
+    "module": "CommonJS",
+    "rootDir": "./src",
+    "outDir": "./dist",
+    "strict": true,
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "forceConsistentCasingInFileNames": true
+  },
+  "include": ["src/**/*"]
 }
