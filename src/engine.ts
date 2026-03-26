@@ -136,41 +136,68 @@ export class AutomationEngine {
     private async applyFilters(page: Page, filters: string[]) {
         if (!filters?.length) return;
         await Humanizer.wait(1500, 2500);
+        
+        // 1. Раскрываем все скрытые группы фильтров (нажимаем все кнопки "더보기" / "Больше")
         await this.expandAllFilters(page);
+
+        // 2. Определяем контейнер, где находятся все фильтры, чтобы не кликать по всей странице
+        // На Coupang фильтры обычно лежат внутри формы #searchOptionForm или блока .search-filters
+        const filterPanel = page.locator('#searchOptionForm, .search-filter-options, .search-filters').first();
 
         for (const f of filters) {
             let clicked = false;
-            if (f === 'rocket' || f.toLowerCase().includes('rocket') || f.includes('로켓')) {
-                const rocketSels = [
-                    'label[data-component-name*="deliveryFilterOption-rocket"]:not([data-component-name*="luxury"]):not([data-component-name*="global"])',
-                    'label[data-component-name="deliveryFilterOption-rocket"]',
-                ];
-                for (const sel of rocketSels) {
-                    const el = page.locator(sel).first();
-                    if (await el.isVisible({ timeout: 2000 }).catch(() => false)) {
-                        await Humanizer.move(page, el);
-                        await el.click();
-                        await page.waitForLoadState('load', { timeout: 15000 });
-                        await Humanizer.wait(1500, 3000);
-                        this.log(`  [SUCCESS] Фильтр доставки Rocket применён`);
-                        clicked = true; break;
-                    }
+            const filterLower = f.toLowerCase();
+
+            // ШАГ 1: Проверка хардкодных/системных фильтров (Доставка, Наличие)
+            // Эти фильтры часто реализованы иконками или сложной версткой, поэтому для них оставляем точные локаторы
+            if (filterLower.includes('품절') || filterLower.includes('out of stock')) {
+                const el = page.locator('label.search-filter-exclude-out-of-stock, input#outOfStockProduct + label').first();
+                if (await el.isVisible({ timeout: 1500 }).catch(() => false)) {
+                    await el.click();
+                    clicked = true;
                 }
-            } else {
-                const textSelectors = [`label:has-text("${f}")`, `a:has-text("${f}")`, `span:has-text("${f}")`, `button:has-text("${f}")`];
-                for (const sel of textSelectors) {
-                    const el = page.locator(sel).first();
-                    if (await el.isVisible({ timeout: 2000 }).catch(() => false)) {
+            } else if (filterLower.includes('rocket') || filterLower.includes('로켓')) {
+                const el = page.locator('label[data-component-name*="rocket"]').first();
+                if (await el.isVisible({ timeout: 1500 }).catch(() => false)) {
+                    await el.click();
+                    clicked = true;
+                }
+            } 
+            
+            // ШАГ 2: Динамический/Семантический поиск (Размеры, Бренды, Цвета, Материалы, Звезды)
+            if (!clicked) {
+                // Если у нас нет панели фильтров (изменился дизайн), ищем по всей странице, иначе - внутри панели
+                const searchRoot = await filterPanel.isVisible().catch(() => false) ? filterPanel : page;
+
+                // Используем мощный инструмент Playwright - поиск элементов по тексту (getByText)
+                // Ищем теги label, a, span или button, которые содержат введенный пользователем текст
+                const textLocators = [
+                    searchRoot.locator(`label:has-text("${f}")`),
+                    searchRoot.locator(`a:has-text("${f}")`),
+                    searchRoot.locator(`button:has-text("${f}")`),
+                    searchRoot.locator(`span:has-text("${f}")`)
+                ];
+
+                for (const loc of textLocators) {
+                    // Берем первый найденный видимый элемент
+                    const el = loc.first();
+                    if (await el.isVisible({ timeout: 1000 }).catch(() => false)) {
                         await Humanizer.move(page, el);
                         await el.click();
-                        await page.waitForLoadState('load', { timeout: 15000 });
-                        await Humanizer.wait(1500, 3000);
-                        this.log(`  [SUCCESS] Фильтр: "${f}"`);
-                        clicked = true; break;
+                        clicked = true;
+                        this.log(`  [SUCCESS] Найден и применен фильтр: "${f}"`);
+                        break; // Выходим из цикла поиска локаторов
                     }
                 }
             }
-            if (!clicked) this.log(`  [WARNING] Фильтр не найден или скрыт: "${f}"`);
+
+            // Ожидание перезагрузки списка товаров после клика
+            if (clicked) {
+                await page.waitForLoadState('load', { timeout: 15000 });
+                await Humanizer.wait(1500, 2500);
+            } else {
+                this.log(`  [WARNING] Не удалось найти фильтр: "${f}". Возможно, он отсутствует в этой категории.`);
+            }
         }
     }
 

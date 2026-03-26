@@ -5,15 +5,19 @@
   "scripts": {
     "build": "tsc",
     "start": "npm run build && electron .",
-    "pack": "npm run build && electron-builder --win --x64"
+    "pack": "npm run build && electron-builder --win --x64",
+    "test": "jest"
   },
   "dependencies": {
     "patchright": "latest"
   },
   "devDependencies": {
+    "@types/jest": "^30.0.0",
     "@types/node": "^20.0.0",
     "electron": "^41.0.4",
     "electron-builder": "^26.8.1",
+    "jest": "^30.3.0",
+    "ts-jest": "^29.4.6",
     "tsx": "^4.7.0",
     "typescript": "^5.0.0"
   },
