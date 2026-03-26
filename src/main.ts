@@ -107,7 +107,24 @@ function setupAutoUpdater(win: BrowserWindow) {
 }
 
 app.whenReady().then(() => {
-  setupUserFiles(); // Подготавливаем файлы перед открытием окна
+  // Функция для копирования конфигов
+  function setupUserFiles() {
+    const configDest = path.join(USER_DATA_PATH, "config.json");
+    const selectorsDest = path.join(USER_DATA_PATH, "selectors.json");
+
+    const configSrc = path.join(__dirname, "../config/config.json");
+    const selectorsSrc = path.join(__dirname, "../config/selectors.json");
+
+    // Конфиг копируем ТОЛЬКО если его нет (чтобы не затереть задачи пользователя)
+    if (!fs.existsSync(configDest) && fs.existsSync(configSrc)) {
+      fs.copyFileSync(configSrc, configDest);
+    }
+
+    // Селекторы копируем ВСЕГДА (принудительно обновляем базу локаторов)
+    if (fs.existsSync(selectorsSrc)) {
+      fs.copyFileSync(selectorsSrc, selectorsDest);
+    }
+  }
   createWindow();
 });
 
