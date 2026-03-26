@@ -53,6 +53,11 @@
         <h2>Бот работает...</h2>
         <p class="note">Пожалуйста, не закрывайте окно. Браузер откроется автоматически.</p>
         <div id="logConsole"></div>
+
+        <div id="updateSection" style="display: none; margin-top: 15px; padding-top: 15px; border-top: 1px solid #eee;">
+            <label style="color: #2980b9;">Загрузка обновления: <span id="updatePercent">0</span>%</label>
+            <progress id="updateProgress" value="0" max="100" style="width: 100%; height: 20px; margin-top: 10px;"></progress>
+        </div>
     </div>
 
     <div id="view-done" class="card view">
@@ -159,6 +164,13 @@
         document.getElementById('btnMainMenu').addEventListener('click', () => {
             document.getElementById('productCount').value = 1;
             switchView('view-setup');
+        });
+
+        // Слушатель прогресса скачивания обновления
+        window.api.onUpdateProgress((percent) => {
+            document.getElementById('updateSection').style.display = 'block';
+            document.getElementById('updateProgress').value = percent;
+            document.getElementById('updatePercent').innerText = percent;
         });
     </script>
 </body>

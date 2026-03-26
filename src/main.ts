@@ -1,6 +1,7 @@
 import { app, BrowserWindow, ipcMain, shell } from 'electron';
 import * as path from 'path';
 import * as fs from 'fs';
+import { autoUpdater } from 'electron-updater';
 import { AutomationEngine } from './engine';
 
 // Получаем системную папку для хранения изменяемых данных (в Windows это AppData/Roaming/Coupang Bot)
@@ -28,6 +29,7 @@ function createWindow() {
         width: 550,
         height: 650,
         autoHideMenuBar: true,
+        icon: path.join(__dirname, '../assets/icon.ico'),
         webPreferences: {
             preload: path.join(__dirname, 'preload.js'),
             nodeIntegration: false,
@@ -36,6 +38,35 @@ function createWindow() {
     });
 
     win.loadFile(path.join(__dirname, '../src/index.html'));
+
+    setupAutoUpdater(win);
+}
+
+// Функция для управления процессом обновления
+function setupAutoUpdater(win: BrowserWindow) {
+    autoUpdater.checkForUpdatesAndNotify();
+
+    autoUpdater.on('update-available', () => {
+        win.webContents.send('bot-log', '[СИСТЕМА] Найдено обновление. Начинаю загрузку...');
+    });
+
+    // Перехват данных о скорости и прогрессе скачивания
+    autoUpdater.on('download-progress', (progressObj) => {
+        const percent = Math.round(progressObj.percent);
+        // Отправляем процент загрузки в интерфейс
+        win.webContents.send('update-progress', percent);
+    });
+
+    autoUpdater.on('update-downloaded', () => {
+        win.webContents.send('bot-log', '[СИСТЕМА] Обновление загружено. Перезапуск через 3 секунды...');
+        setTimeout(() => {
+            autoUpdater.quitAndInstall(); 
+        }, 3000);
+    });
+
+    autoUpdater.on('error', (err) => {
+        win.webContents.send('bot-log', `[ОШИБКА ОБНОВЛЕНИЯ] ${err.message}`);
+    });
 }
 
 app.whenReady().then(() => {

@@ -4,5 +4,6 @@ contextBridge.exposeInMainWorld('api', {
     startBot: (tasksArray: any) => ipcRenderer.send('start-bot', tasksArray),
     onLog: (callback: (msg: string) => void) => ipcRenderer.on('bot-log', (_event, msg) => callback(msg)),
     onDone: (callback: (path: string | null) => void) => ipcRenderer.on('bot-done', (_event, path) => callback(path)),
-    openScreenshot: (path: string) => ipcRenderer.send('open-path', path)
+    openScreenshot: (path: string) => ipcRenderer.send('open-path', path),
+    onUpdateProgress: (callback: (percent: number) => void) => ipcRenderer.on('update-progress', (_event, p) => callback(p))
 });

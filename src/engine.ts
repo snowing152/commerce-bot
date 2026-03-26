@@ -5,6 +5,7 @@ import * as path from 'path';
 import { spawn } from 'child_process';
 import * as os from 'os';
 import { Humanizer, isCDPReady, waitForCDP } from './utils';
+import { autoUpdater } from 'electron-updater';
 
 const DEBUG_PORT = 9222;
 
