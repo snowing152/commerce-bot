@@ -11,9 +11,15 @@ const DEBUG_PORT = 9222;
 export class AutomationEngine {
     private config: any;
     private selectors: any;
-    private rootDir = path.join(__dirname, '..');
+    
+    // Удаляем это: private rootDir = path.join(__dirname, '..');
+    // ДОБАВЛЯЕМ ЭТО:
+    private userDataPath: string;
 
-    // Callback для отправки логов в интерфейс
+    constructor(userDataPath: string) {
+        this.userDataPath = userDataPath;
+    }
+
     public onLog?: (msg: string) => void;
 
     // Внутренняя функция логирования
@@ -23,8 +29,8 @@ export class AutomationEngine {
     }
 
     private async loadConfigs() {
-        const configRaw = await fs.readFile(path.join(this.rootDir, 'config', 'config.json'), 'utf-8');
-        const selectorsRaw = await fs.readFile(path.join(this.rootDir, 'config', 'selectors.json'), 'utf-8');
+        const configRaw = await fs.readFile(path.join(this.userDataPath, 'config.json'), 'utf-8');
+        const selectorsRaw = await fs.readFile(path.join(this.userDataPath, 'selectors.json'), 'utf-8');
         this.config = JSON.parse(configRaw);
         this.selectors = JSON.parse(selectorsRaw);
     }
@@ -68,7 +74,7 @@ export class AutomationEngine {
             throw new Error('Подходящий браузер не найден. Выполните установку Chromium.');
         }
 
-        const profileDir = path.join(this.rootDir, 'chrome_debug_profile');
+        const profileDir = path.join(this.userDataPath, 'chrome_debug_profile');
         if (!existsSync(profileDir)) fs.mkdir(profileDir, { recursive: true }).catch(() => {});
 
         const args = [
@@ -198,9 +204,11 @@ export class AutomationEngine {
         await Humanizer.wait(800, 1500);
     }
 
-    async run(): Promise<string | null> {
+   async run(): Promise<string | null> {
         await this.loadConfigs();
-        const shots = path.join(this.rootDir, 'screenshots');
+        
+        // Создаем папку screenshots в AppData, где у нас есть права на запись
+        const shots = path.join(this.userDataPath, 'screenshots');
         try { await fs.access(shots); } catch { await fs.mkdir(shots, { recursive: true }); }
 
         this.log(`Проверяю порт отладки ${DEBUG_PORT}...`);
