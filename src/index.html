@@ -1,89 +1,266 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="ru">
-<head>
-    <meta charset="UTF-8">
+  <head>
+    <meta charset="UTF-8" />
     <title>Coupang Bot</title>
     <style>
-        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; padding: 20px; background: #f4f4f9; color: #333; line-height: 1.6; }
-        .card { background: white; padding: 25px; border-radius: 10px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); margin-bottom: 20px; }
-        h2 { margin-top: 0; color: #2c3e50; border-bottom: 2px solid #eee; padding-bottom: 10px; }
-        h3 { color: #2980b9; margin-bottom: 5px; }
-        label { display: block; margin-top: 15px; font-weight: bold; font-size: 14px; }
-        input[type="text"], input[type="number"] { width: 100%; padding: 12px; margin-top: 5px; border: 1px solid #ccc; border-radius: 5px; box-sizing: border-box; font-size: 14px; }
-        .note { font-size: 13px; color: #7f8c8d; margin: 2px 0 8px 0; font-style: italic; }
-        .important-note { color: #c0392b; font-weight: bold; }
-        
-        button { margin-top: 15px; width: 100%; padding: 12px; background: #3498db; color: white; border: none; border-radius: 5px; font-size: 16px; cursor: pointer; font-weight: bold; transition: background 0.3s; }
-        button:hover { background: #2980b9; }
-        button.secondary { background: #95a5a6; margin-top: 10px; }
-        button.secondary:hover { background: #7f8c8d; }
-        button.success { background: #27ae60; }
-        button.success:hover { background: #2ecc71; }
+      body {
+        font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
+        padding: 20px;
+        background: #f4f4f9;
+        color: #333;
+        line-height: 1.6;
+      }
+      .card {
+        background: white;
+        padding: 25px;
+        border-radius: 10px;
+        box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+        margin-bottom: 20px;
+      }
+      h2 {
+        margin-top: 0;
+        color: #2c3e50;
+        border-bottom: 2px solid #eee;
+        padding-bottom: 10px;
+      }
+      h3 {
+        color: #2980b9;
+        margin-bottom: 5px;
+      }
+      label {
+        display: block;
+        margin-top: 15px;
+        font-weight: bold;
+        font-size: 14px;
+      }
+      input[type="text"],
+      input[type="number"] {
+        width: 100%;
+        padding: 12px;
+        margin-top: 5px;
+        border: 1px solid #ccc;
+        border-radius: 5px;
+        box-sizing: border-box;
+        font-size: 14px;
+      }
+      .note {
+        font-size: 13px;
+        color: #7f8c8d;
+        margin: 2px 0 8px 0;
+        font-style: italic;
+      }
+      .important-note {
+        color: #c0392b;
+        font-weight: bold;
+      }
 
-        .task-block { background: #fdfdfd; border: 1px solid #e0e0e0; padding: 15px; border-radius: 8px; margin-top: 15px; }
-        
-        /* Окно логов */
-        #logConsole { background: #1e1e1e; color: #d4d4d4; padding: 15px; border-radius: 5px; height: 300px; overflow-y: auto; font-family: 'Consolas', monospace; font-size: 13px; white-space: pre-wrap; margin-top: 15px; border: 1px solid #333; line-height: 1.4; }
-        
-        /* Скрытие экранов */
-        .view { display: none; }
-        .view.active { display: block; }
+      button {
+        margin-top: 15px;
+        width: 100%;
+        padding: 12px;
+        background: #3498db;
+        color: white;
+        border: none;
+        border-radius: 5px;
+        font-size: 16px;
+        cursor: pointer;
+        font-weight: bold;
+        transition: background 0.3s;
+      }
+      button:hover {
+        background: #2980b9;
+      }
+      button.secondary {
+        background: #95a5a6;
+        margin-top: 10px;
+      }
+      button.secondary:hover {
+        background: #7f8c8d;
+      }
+      button.success {
+        background: #27ae60;
+      }
+      button.success:hover {
+        background: #2ecc71;
+      }
+
+      .task-block {
+        background: #fdfdfd;
+        border: 1px solid #e0e0e0;
+        padding: 15px;
+        border-radius: 8px;
+        margin-top: 15px;
+      }
+
+      /* Окно логов */
+      #logConsole {
+        background: #1e1e1e;
+        color: #d4d4d4;
+        padding: 15px;
+        border-radius: 5px;
+        height: 300px;
+        overflow-y: auto;
+        font-family: "Consolas", monospace;
+        font-size: 13px;
+        white-space: pre-wrap;
+        margin-top: 15px;
+        border: 1px solid #333;
+        line-height: 1.4;
+      }
+
+      /* Скрытие экранов */
+      .view {
+        display: none;
+      }
+      .view.active {
+        display: block;
+      }
     </style>
-</head>
-<body>
-
+  </head>
+  <body>
     <div id="view-setup" class="card view active">
-        <h2>Настройка сессии</h2>
-        <label>Сколько товаров нужно найти?</label>
-        <p class="note">Введите общее количество товаров для поиска (например, от 1 до 5).</p>
-        <input type="number" id="productCount" min="1" max="10" value="1">
-        <button id="btnGenerate">Далее</button>
+      <h2>Настройка сессии</h2>
+
+      <div
+        style="
+          background: #e8f4f8;
+          padding: 10px;
+          border-radius: 5px;
+          margin-bottom: 15px;
+          font-size: 13px;
+        "
+      >
+        <strong>Версия:</strong> <span id="appVersion">Загрузка...</span><br />
+        <strong>Статус:</strong>
+        <span id="updateStatusText" style="color: #27ae60"
+          >Установлена последняя версия</span
+        >
+      </div>
+
+      <label>Сколько товаров нужно найти?</label>
+      <p class="note">
+        Введите общее количество товаров для поиска (например, от 1 до 5).
+      </p>
+      <input type="number" id="productCount" min="1" max="10" value="1" />
+      <button id="btnGenerate">Далее</button>
     </div>
 
     <div id="view-tasks" class="view">
-        <div class="card">
-            <h2>Данные о товарах</h2>
-            <div id="tasksContainer"></div>
-            <button id="btnStart" class="success">▶ Запустить бота</button>
-            <button id="btnBackToSetup" class="secondary">◀ Назад (изменить количество)</button>
-        </div>
+      <div class="card">
+        <h2>Данные о товарах</h2>
+        <div id="tasksContainer"></div>
+        <button id="btnStart" class="success">▶ Запустить бота</button>
+        <button id="btnBackToSetup" class="secondary">
+          ◀ Назад (изменить количество)
+        </button>
+      </div>
     </div>
 
     <div id="view-running" class="card view">
-        <h2>Бот работает...</h2>
-        <p class="note">Пожалуйста, не закрывайте окно. Браузер откроется автоматически.</p>
-        <div id="logConsole"></div>
+      <h2>Бот работает...</h2>
+      <p class="note">
+        Пожалуйста, не закрывайте окно. Браузер откроется автоматически.
+      </p>
+      <div id="logConsole"></div>
 
-        <div id="updateSection" style="display: none; margin-top: 15px; padding-top: 15px; border-top: 1px solid #eee;">
-            <label style="color: #2980b9;">Загрузка обновления: <span id="updatePercent">0</span>%</label>
-            <progress id="updateProgress" value="0" max="100" style="width: 100%; height: 20px; margin-top: 10px;"></progress>
-        </div>
+      <div
+        id="updateSection"
+        style="
+          display: none;
+          margin-top: 15px;
+          padding-top: 15px;
+          border-top: 1px solid #eee;
+        "
+      >
+        <label style="color: #2980b9"
+          >Загрузка обновления: <span id="updatePercent">0</span>%</label
+        >
+        <progress
+          id="updateProgress"
+          value="0"
+          max="100"
+          style="width: 100%; height: 20px; margin-top: 10px"
+        ></progress>
+      </div>
     </div>
 
     <div id="view-done" class="card view">
-        <h2>Готово!</h2>
-        <p id="finishMessage" style="font-weight: bold; color: #27ae60;">Все задачи успешно выполнены.</p>
-        <button id="btnOpenScreenshot" style="display: none;">📷 Показать скриншот в папке</button>
-        <button id="btnMainMenu" class="secondary">Вернуться в главное меню</button>
+      <h2>Готово!</h2>
+      <p id="finishMessage" style="font-weight: bold; color: #27ae60">
+        Все задачи успешно выполнены.
+      </p>
+      <button id="btnOpenScreenshot" style="display: none">
+        Показать скриншот в папке
+      </button>
+
+      <button id="btnSendLogs" style="background: #8e44ad; margin-top: 10px">
+        Отправить логи разработчику
+      </button>
+      <p
+        id="logStatus"
+        class="note"
+        style="text-align: center; margin-top: 5px"
+      ></p>
+
+      <button id="btnMainMenu" class="secondary">
+        Вернуться в главное меню
+      </button>
     </div>
 
     <script>
-        // Навигация по экранам
-        function switchView(viewId) {
-            document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
-            document.getElementById(viewId).classList.add('active');
-        }
+      // Получаем текущую версию при загрузке
+      window.api.getVersion().then((version) => {
+        document.getElementById("appVersion").innerText = version;
+      });
 
-        let currentScreenshotPath = null;
+      // Слушатель статуса обновлений для главного меню
+      window.api.onUpdateStatus((statusText) => {
+        document.getElementById("updateStatusText").innerText = statusText;
+        document.getElementById("updateStatusText").style.color = "#e67e22";
+      });
 
-        // ЭКРАН 1 -> ЭКРАН 2
-        document.getElementById('btnGenerate').addEventListener('click', () => {
-            const count = parseInt(document.getElementById('productCount').value) || 1;
-            const container = document.getElementById('tasksContainer');
-            container.innerHTML = ''; 
+      // Обработчик кнопки отправки логов
+      document.getElementById("btnSendLogs").addEventListener("click", () => {
+        const btn = document.getElementById("btnSendLogs");
+        const status = document.getElementById("logStatus");
 
-            for (let i = 1; i <= count; i++) {
-                container.innerHTML += `
+        btn.disabled = true;
+        status.innerText = "Отправка...";
+
+        // Берем весь текст из черного окна логов
+        const logs = document.getElementById("logConsole").innerText;
+
+        window.api.sendLogsToTelegram(logs).then((success) => {
+          if (success) {
+            status.innerText = "Логи успешно отправлены!";
+            status.style.color = "#27ae60";
+          } else {
+            status.innerText = "Ошибка при отправке логов.";
+            status.style.color = "#c0392b";
+            btn.disabled = false;
+          }
+        });
+      });
+      // Навигация по экранам
+      function switchView(viewId) {
+        document
+          .querySelectorAll(".view")
+          .forEach((v) => v.classList.remove("active"));
+        document.getElementById(viewId).classList.add("active");
+      }
+
+      let currentScreenshotPath = null;
+
+      // ЭКРАН 1 -> ЭКРАН 2
+      document.getElementById("btnGenerate").addEventListener("click", () => {
+        const count =
+          parseInt(document.getElementById("productCount").value) || 1;
+        const container = document.getElementById("tasksContainer");
+        container.innerHTML = "";
+
+        for (let i = 1; i <= count; i++) {
+          container.innerHTML += `
                     <div class="task-block">
                         <h3>Товар #${i}</h3>
                         <label>Ключевое слово (keyword):</label>
@@ -99,79 +276,92 @@
                         <input type="text" id="filters_${i}" placeholder="rocket, 공/볼">
                     </div>
                 `;
-            }
-            switchView('view-tasks');
+        }
+        switchView("view-tasks");
+      });
+
+      // ЭКРАН 2 -> ЭКРАН 1 (Кнопка Назад)
+      document
+        .getElementById("btnBackToSetup")
+        .addEventListener("click", () => {
+          switchView("view-setup");
         });
 
-        // ЭКРАН 2 -> ЭКРАН 1 (Кнопка Назад)
-        document.getElementById('btnBackToSetup').addEventListener('click', () => {
-            switchView('view-setup');
+      // ЭКРАН 2 -> ЭКРАН 3 (Запуск бота)
+      document.getElementById("btnStart").addEventListener("click", () => {
+        const count =
+          parseInt(document.getElementById("productCount").value) || 1;
+        const tasks = [];
+
+        for (let i = 1; i <= count; i++) {
+          const keyword = document.getElementById(`keyword_${i}`).value.trim();
+          const targetName = document
+            .getElementById(`targetName_${i}`)
+            .value.trim();
+          const filtersRaw = document.getElementById(`filters_${i}`).value;
+          const filters = filtersRaw
+            .split(",")
+            .map((f) => f.trim())
+            .filter((f) => f);
+
+          if (!keyword || !targetName) {
+            alert(`Заполните обязательные поля для Товара #${i}`);
+            return;
+          }
+          tasks.push({ keyword, target_name: targetName, filters, cost: [] });
+        }
+
+        document.getElementById("logConsole").innerText = "Инициализация...\n";
+        switchView("view-running");
+        window.api.startBot(tasks);
+      });
+
+      // Добавление логов в консоль
+      window.api.onLog((msg) => {
+        const consoleEl = document.getElementById("logConsole");
+        consoleEl.innerText += msg + "\n";
+        consoleEl.scrollTop = consoleEl.scrollHeight; // Автоскролл вниз
+      });
+
+      // ЭКРАН 3 -> ЭКРАН 4 (Завершение)
+      window.api.onDone((screenshotPath) => {
+        currentScreenshotPath = screenshotPath;
+        switchView("view-done");
+
+        const btnOpen = document.getElementById("btnOpenScreenshot");
+        if (screenshotPath) {
+          document.getElementById("finishMessage").innerText =
+            "Все задачи успешно выполнены. Скриншот сохранен!";
+          document.getElementById("finishMessage").style.color = "#27ae60";
+          btnOpen.style.display = "block";
+        } else {
+          document.getElementById("finishMessage").innerText =
+            "Бот завершил работу, но скриншот не был создан (см. логи).";
+          document.getElementById("finishMessage").style.color = "#c0392b";
+          btnOpen.style.display = "none";
+        }
+      });
+
+      // Кнопка открытия скриншота
+      document
+        .getElementById("btnOpenScreenshot")
+        .addEventListener("click", () => {
+          if (currentScreenshotPath)
+            window.api.openScreenshot(currentScreenshotPath);
         });
 
-        // ЭКРАН 2 -> ЭКРАН 3 (Запуск бота)
-        document.getElementById('btnStart').addEventListener('click', () => {
-            const count = parseInt(document.getElementById('productCount').value) || 1;
-            const tasks = [];
+      // Возврат в главное меню
+      document.getElementById("btnMainMenu").addEventListener("click", () => {
+        document.getElementById("productCount").value = 1;
+        switchView("view-setup");
+      });
 
-            for (let i = 1; i <= count; i++) {
-                const keyword = document.getElementById(`keyword_${i}`).value.trim();
-                const targetName = document.getElementById(`targetName_${i}`).value.trim();
-                const filtersRaw = document.getElementById(`filters_${i}`).value;
-                const filters = filtersRaw.split(',').map(f => f.trim()).filter(f => f);
-
-                if (!keyword || !targetName) {
-                    alert(`Заполните обязательные поля для Товара #${i}`);
-                    return; 
-                }
-                tasks.push({ keyword, target_name: targetName, filters, cost: [] });
-            }
-
-            document.getElementById('logConsole').innerText = 'Инициализация...\n';
-            switchView('view-running');
-            window.api.startBot(tasks);
-        });
-
-        // Добавление логов в консоль
-        window.api.onLog((msg) => {
-            const consoleEl = document.getElementById('logConsole');
-            consoleEl.innerText += msg + '\n';
-            consoleEl.scrollTop = consoleEl.scrollHeight; // Автоскролл вниз
-        });
-
-        // ЭКРАН 3 -> ЭКРАН 4 (Завершение)
-        window.api.onDone((screenshotPath) => {
-            currentScreenshotPath = screenshotPath;
-            switchView('view-done');
-            
-            const btnOpen = document.getElementById('btnOpenScreenshot');
-            if (screenshotPath) {
-                document.getElementById('finishMessage').innerText = "Все задачи успешно выполнены. Скриншот сохранен!";
-                document.getElementById('finishMessage').style.color = "#27ae60";
-                btnOpen.style.display = 'block';
-            } else {
-                document.getElementById('finishMessage').innerText = "Бот завершил работу, но скриншот не был создан (см. логи).";
-                document.getElementById('finishMessage').style.color = "#c0392b";
-                btnOpen.style.display = 'none';
-            }
-        });
-
-        // Кнопка открытия скриншота
-        document.getElementById('btnOpenScreenshot').addEventListener('click', () => {
-            if (currentScreenshotPath) window.api.openScreenshot(currentScreenshotPath);
-        });
-
-        // Возврат в главное меню
-        document.getElementById('btnMainMenu').addEventListener('click', () => {
-            document.getElementById('productCount').value = 1;
-            switchView('view-setup');
-        });
-
-        // Слушатель прогресса скачивания обновления
-        window.api.onUpdateProgress((percent) => {
-            document.getElementById('updateSection').style.display = 'block';
-            document.getElementById('updateProgress').value = percent;
-            document.getElementById('updatePercent').innerText = percent;
-        });
+      // Слушатель прогресса скачивания обновления
+      window.api.onUpdateProgress((percent) => {
+        document.getElementById("updateSection").style.display = "block";
+        document.getElementById("updateProgress").value = percent;
+        document.getElementById("updatePercent").innerText = percent;
+      });
     </script>
-</body>
+  </body>
 </html>
