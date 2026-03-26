@@ -1,0 +1,14 @@
+{
+  "settings": {
+    "base_url": "https://www.coupang.com",
+    "max_pages_to_search": 3
+  },
+  "tasks": [
+    {
+      "keyword": "모공수축크림",
+      "target_name": "투집 포어본드 모공수축크림, 1개, 50ml",
+      "filters": [],
+      "cost": []
+    }
+  ]
+}

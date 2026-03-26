@@ -1,20 +1,47 @@
-# Node dependencies (These should never be committed as they are large and OS-dependent)
+# Dependencies
 node_modules/
-chrome_debug_profile/
-.env
 
-# Generated application outputs (Keeps the repository clean of runtime files)
-screenshots/
-
-# Local configuration and secrets (Best practice to prevent leaking API keys or credentials)
-config.json
-.env
-
-# Compiled TypeScript output (Standard directories for compiled .js files)
+# Build output
 dist/
-build/
-out/
+!dist/
 
-# OS-generated files (Prevents cluttering the repository with system cache)
+# Electron builder output
+dist/win-unpacked/
+dist/*.exe
+dist/*.exe.blockmap
+dist/*.yml
+dist/*.yaml
+
+# Compiled JS (from TypeScript src)
+dist/engine.js
+dist/main.js
+dist/preload.js
+dist/utils.js
+dist/engine.test.js
+dist/utils.test.js
+
+# Logs
+logs/
+*.log
+npm-debug.log*
+
+# Environment variables
+.env
+.env.local
+.env.*.local
+
+# OS files
 .DS_Store
 Thumbs.db
+
+# Editor
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Test coverage
+coverage/
+
+# TypeScript cache
+*.tsbuildinfo

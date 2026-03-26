@@ -1,11 +1,12 @@
 {
   "name": "coupang-bot",
-  "version": "1.0.2",
+  "version": "1.0.3",
   "main": "dist/main.js",
   "scripts": {
+    "clean": "node -e \"const fs = require('fs'); fs.rmSync('dist', { recursive: true, force: true });\"",
     "build": "tsc",
+    "pack": "npm run clean && npm run build && electron-builder --win --x64",
     "start": "npm run build && electron .",
-    "pack": "npm run build && electron-builder --win --x64",
     "test": "jest"
   },
   "dependencies": {
