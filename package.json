@@ -10,7 +10,7 @@
   },
   "dependencies": {
     "electron-updater": "^6.8.3",
-    "patchright": "latest"
+    "patchright": "^1.58.2"
   },
   "devDependencies": {
     "@types/jest": "^30.0.0",
@@ -20,7 +20,7 @@
     "jest": "^30.3.0",
     "ts-jest": "^29.4.6",
     "tsx": "^4.7.0",
-    "typescript": "^5.0.0"
+    "typescript": "^5.9.3"
   },
   "build": {
     "appId": "com.coupang.bot",
@@ -36,6 +36,7 @@
         "repo": "https://github.com/snowing152/commerce-bot.git"
       }
     ],
+    "compression": "maximum",
     "files": [
       "dist/**/*",
       "config/**/*",
