@@ -232,7 +232,7 @@ export class AutomationEngine {
 
       // Ожидание перезагрузки списка товаров после клика
       if (clicked) {
-        await page.waitForLoadState("load", { timeout: 15000 });
+        await page.waitForLoadState("domcontentloaded", { timeout: 15000 });
         await Humanizer.wait(1500, 2500);
       } else {
         this.log(
@@ -265,7 +265,7 @@ export class AutomationEngine {
           if (norm(txt) === norm(ct) || norm(txt).includes(norm(ct))) {
             await Humanizer.move(page, all.nth(i));
             await all.nth(i).click();
-            await page.waitForLoadState("load", { timeout: 15000 });
+            await page.waitForLoadState("domcontentloaded", { timeout: 15000 });
             await Humanizer.wait(1500, 2500);
             this.log(`  [SUCCESS] Цена: "${norm(txt)}"`);
             clicked = true;
@@ -404,7 +404,7 @@ export class AutomationEngine {
               .split(" ")
               .slice(0, 4)
               .join(" ");
-            if (name.includes(target)) {
+            if (name.toLowerCase().includes(target.toLowerCase())) {
               this.log(`  [SUCCESS] Найден: "${name}"`);
               await Humanizer.move(page, cards.nth(i));
               await Humanizer.wait(400, 800);
@@ -456,7 +456,9 @@ export class AutomationEngine {
             if (await next.isVisible({ timeout: 2000 }).catch(() => false)) {
               await Humanizer.move(page, next);
               await next.click();
-              await page.waitForLoadState("load", { timeout: 30000 });
+              await page.waitForLoadState("domcontentloaded", {
+                timeout: 30000,
+              });
               await Humanizer.wait(2500, 4500);
               nextOk = true;
               break;
