@@ -11,8 +11,16 @@ const DEBUG_PORT = 9222;
 export class AutomationEngine {
     private config: any;
     private selectors: any;
-    // Указывает на корень проекта для корректного чтения конфигураций
     private rootDir = path.join(__dirname, '..');
+
+    // Callback для отправки логов в интерфейс
+    public onLog?: (msg: string) => void;
+
+    // Внутренняя функция логирования
+    private log(msg: string) {
+        console.log(msg); // Оставляем для консоли на всякий случай
+        if (this.onLog) this.onLog(msg); // Отправляем в графический интерфейс
+    }
 
     private async loadConfigs() {
         const configRaw = await fs.readFile(path.join(this.rootDir, 'config', 'config.json'), 'utf-8');
@@ -57,21 +65,19 @@ export class AutomationEngine {
     private launchBrowser() {
         const browserPath = process.env.CHROME_PATH || this.findBrowserPath();
         if (!browserPath) {
-            console.error('[ERROR] Подходящий браузер не найден.');
-            process.exit(1);
+            throw new Error('Подходящий браузер не найден. Выполните установку Chromium.');
         }
 
         const profileDir = path.join(this.rootDir, 'chrome_debug_profile');
         if (!existsSync(profileDir)) fs.mkdir(profileDir, { recursive: true }).catch(() => {});
 
-        // Использование специфичных флагов для поддержки инкогнито в разных браузерах
         const args = [
             `--remote-debugging-port=${DEBUG_PORT}`,
             `--remote-debugging-address=127.0.0.1`,
             `--user-data-dir=${profileDir}`,
-            '--incognito',   // Chrome, Yandex, Brave
-            '-inprivate',    // Microsoft Edge
-            '--private',     // Opera
+            '--incognito',   
+            '-inprivate',    
+            '--private',     
             '--no-first-run',
             '--no-default-browser-check',
             '--disable-extensions',
@@ -79,8 +85,7 @@ export class AutomationEngine {
             '--new-window'
         ];
 
-        console.log(`[INFO] Запуск браузера: ${browserPath}`);
-        // detached: true предотвращает закрытие браузера после завершения скрипта
+        this.log(`[INFO] Запуск браузера: ${browserPath}`);
         const child = spawn(browserPath, args, { stdio: 'ignore', detached: true });
         child.unref(); 
     }
@@ -91,7 +96,7 @@ export class AutomationEngine {
             const l = page.locator(sel);
             const c = await l.count().catch(() => 0);
             if (c > 0) { 
-                console.log(`  Карточки: "${sel}" (${c})`); 
+                this.log(`  Карточки: "${sel}" (${c})`); 
                 return { loc: l, count: c }; 
             }
         }
@@ -141,7 +146,7 @@ export class AutomationEngine {
                         await el.click();
                         await page.waitForLoadState('load', { timeout: 15000 });
                         await Humanizer.wait(1500, 3000);
-                        console.log(`  [SUCCESS] Фильтр доставки Rocket применён`);
+                        this.log(`  [SUCCESS] Фильтр доставки Rocket применён`);
                         clicked = true; break;
                     }
                 }
@@ -154,12 +159,12 @@ export class AutomationEngine {
                         await el.click();
                         await page.waitForLoadState('load', { timeout: 15000 });
                         await Humanizer.wait(1500, 3000);
-                        console.log(`  [SUCCESS] Фильтр: "${f}"`);
+                        this.log(`  [SUCCESS] Фильтр: "${f}"`);
                         clicked = true; break;
                     }
                 }
             }
-            if (!clicked) console.log(`  [WARNING] Фильтр не найден или скрыт: "${f}"`);
+            if (!clicked) this.log(`  [WARNING] Фильтр не найден или скрыт: "${f}"`);
         }
     }
 
@@ -180,44 +185,41 @@ export class AutomationEngine {
                         await all.nth(i).click();
                         await page.waitForLoadState('load', { timeout: 15000 });
                         await Humanizer.wait(1500, 2500);
-                        console.log(`  [SUCCESS] Цена: "${norm(txt)}"`);
+                        this.log(`  [SUCCESS] Цена: "${norm(txt)}"`);
                         clicked = true; break;
                     }
                 }
-                if (!clicked) console.log(`  [WARNING] Цена не найдена: "${ct}"`);
+                if (!clicked) this.log(`  [WARNING] Цена не найдена: "${ct}"`);
             } catch (e: any) { 
-                console.log(`  [WARNING] Ошибка цены: ${e.message}`); 
+                this.log(`  [WARNING] Ошибка цены: ${e.message}`); 
             }
         }
         await page.evaluate(() => window.scrollTo({ top: 0, behavior: 'smooth' }));
         await Humanizer.wait(800, 1500);
     }
 
-    async run() {
+    async run(): Promise<string | null> {
         await this.loadConfigs();
         const shots = path.join(this.rootDir, 'screenshots');
         try { await fs.access(shots); } catch { await fs.mkdir(shots, { recursive: true }); }
 
-        console.log(`Проверяю порт отладки ${DEBUG_PORT}...`);
+        this.log(`Проверяю порт отладки ${DEBUG_PORT}...`);
         if (!await isCDPReady(DEBUG_PORT)) {
-            console.log('[INFO] Браузер закрыт. Запускаю автоматически...');
+            this.log('[INFO] Браузер закрыт. Запускаю автоматически...');
             this.launchBrowser();
             if (!await waitForCDP(DEBUG_PORT, 15000)) {
-                console.error(`[ERROR] Не удалось подключиться к браузеру.`);
-                process.exit(1);
+                throw new Error(`Не удалось подключиться к браузеру.`);
             }
         }
 
-        console.log('Подключаюсь к браузеру...');
+        this.log('Подключаюсь к браузеру...');
         let browser: Browser;
         try {
             browser = await patchright.chromium.connectOverCDP(`http://127.0.0.1:${DEBUG_PORT}`);
         } catch (e: any) { 
-            console.error(`[ERROR] Ошибка подключения: ${e.message}`); 
-            process.exit(1); 
+            throw new Error(`Ошибка подключения: ${e.message}`); 
         }
 
-        // Поиск активного окна инкогнито среди всех открытых контекстов браузера
         const contexts = browser.contexts();
         const ctx: BrowserContext = contexts.find(c => c.pages().length > 0) || contexts[0];
 
@@ -229,20 +231,18 @@ export class AutomationEngine {
             await page.goto('https://www.coupang.com', { waitUntil: 'load', timeout: 60000 }); 
         } else {
             await page.bringToFront();
-            // Предотвращение зависания на пустой вкладке при старте
             if (page.url() === 'about:blank' || page.url().includes('newtab')) {
                 await page.goto('https://www.coupang.com', { waitUntil: 'load', timeout: 60000 }); 
             }
         }
 
         const title = await page.title();
-        console.log(`Страница: "${title}"`);
+        this.log(`Страница: "${title}"`);
         if (title.includes('Access Denied') || title.includes('Robot')) {
-            console.error('[ERROR] Заблокировано.'); 
             await browser.close(); 
-            process.exit(1);
+            throw new Error('Браузер заблокирован сайтом (Access Denied).');
         }
-        console.log('[SUCCESS] Подключение успешно!\n');
+        this.log('[SUCCESS] Подключение успешно!\n');
 
         ctx.on('page', (p: Page) => { p.on('dialog', async (d: any) => d.accept()); });
         page.on('dialog', async (d: any) => d.accept());
@@ -251,7 +251,7 @@ export class AutomationEngine {
 
         try {
             for (const task of this.config.tasks) {
-                console.log(`\n=== ПОИСК: ${task.keyword} ===`);
+                this.log(`\n=== ПОИСК: ${task.keyword} ===`);
 
                 const inp = page.locator(this.selectors.search_bar).first();
                 if (!await inp.isVisible({ timeout: 3000 }).catch(() => false)) {
@@ -270,7 +270,7 @@ export class AutomationEngine {
                 await Humanizer.wait(2000, 4000);
 
                 if ((await page.title()).includes('Access Denied')) { 
-                    console.error('[ERROR] Блок.'); 
+                    this.log('[ERROR] Блок.'); 
                     break; 
                 }
 
@@ -281,14 +281,14 @@ export class AutomationEngine {
                 const maxP = this.config.settings.max_pages_to_search || 3;
 
                 for (let p = 1; p <= maxP; p++) {
-                    console.log(`  Страница ${p}...`);
+                    this.log(`  Страница ${p}...`);
                     await page.evaluate(() => window.scrollBy(0, 400));
                     await Humanizer.wait(1200, 2500);
                     await Humanizer.randomMove(page);
 
                     const { loc: cards, count } = await this.findCards(page);
                     if (!cards || count === 0) {
-                        console.log('  Карточки не найдены.');
+                        this.log('  Карточки не найдены.');
                         break;
                     }
 
@@ -297,7 +297,7 @@ export class AutomationEngine {
                         if (!name) continue;
                         const target = task.target_name.trim().split(' ').slice(0, 4).join(' ');
                         if (name.includes(target)) {
-                            console.log(`  [SUCCESS] Найден: "${name}"`);
+                            this.log(`  [SUCCESS] Найден: "${name}"`);
                             await Humanizer.move(page, cards.nth(i));
                             await Humanizer.wait(400, 800);
 
@@ -307,6 +307,8 @@ export class AutomationEngine {
                             ]);
                             await np.waitForLoadState('load', { timeout: 30000 });
                             await Humanizer.wait(1500, 2500);
+                            
+                            this.log('  Читаю страницу товара...'); // Ранее это было внутри utils.ts
                             await Humanizer.simulateReading(np);
 
                             let cartOk = false;
@@ -317,7 +319,7 @@ export class AutomationEngine {
                                     await Humanizer.move(np, btn);
                                     await Humanizer.wait(400, 900);
                                     await btn.click();
-                                    console.log('  [SUCCESS] Добавлено в корзину.');
+                                    this.log('  [SUCCESS] Добавлено в корзину.');
                                     cartOk = true; break;
                                 }
                             }
@@ -345,19 +347,18 @@ export class AutomationEngine {
                     if (!nextOk) break;
                 }
 
-                if (!found) console.log(`  [ERROR] Не найден: "${task.target_name.slice(0, 35)}..."`);
+                if (!found) this.log(`  [ERROR] Не найден: "${task.target_name.slice(0, 35)}..."`);
                 const pause = Math.floor(Math.random() * 12 + 8);
                 await Humanizer.wait(pause * 1000, pause * 1000 + 4000);
             }
 
-            console.log('\n--- Корзина ---');
+            this.log('\n--- Корзина ---');
             await page.goto('https://cart.coupang.com/cartView.pang', { waitUntil: 'load', timeout: 30000 });
             await Humanizer.wait(8000, 12000); 
 
             const file = `${Humanizer.date()}_final_cart.png`;
             const screenshotPath = path.join(shots, file);
 
-            // Использование массива селекторов с двойным экранированием спецсимволов Tailwind
             const cartContainerSelectors = [
                 'body > div:nth-child(4) > div > div > div.twc-bg-white.max-md\\:twc-mx-\\[20px\\].max-csm\\:twc-mx-0 > div > div.twc-flex.max-mobile\\:twc-mx-\\[16px\\].max-mobile\\:twc-mt-\\[16px\\]',
                 '#cartTable',                 
@@ -369,8 +370,7 @@ export class AutomationEngine {
             for (const sel of cartContainerSelectors) {
                 const container = page.locator(sel).first();
                 if (await container.isVisible({ timeout: 5000 }).catch(() => false)) {
-                    console.log(`  Снимаю область товаров...`);
-                    // Ограничивает снимок границами найденного контейнера
+                    this.log(`  Снимаю область товаров...`);
                     await container.screenshot({ path: screenshotPath });
                     shotDone = true;
                     break;
@@ -378,14 +378,16 @@ export class AutomationEngine {
             }
 
             if (!shotDone) {
-                console.log('  [WARNING] Контейнер корзины не найден. Делаю обычный скриншот.');
+                this.log('  [WARNING] Контейнер корзины не найден. Делаю обычный скриншот.');
                 await page.screenshot({ path: screenshotPath, fullPage: false });
             }
 
-            console.log(`[SUCCESS] Скриншот сохранен: ${file}`);
+            this.log(`[SUCCESS] Скриншот сохранен: ${file}`);
+            return screenshotPath; // Возвращаем путь к файлу для кнопки открытия
 
         } catch (e: any) {
-            console.error('Ошибка:', e.message);
+            this.log(`[ERROR] Ошибка выполнения: ${e.message}`);
+            return null;
         } finally {
             await browser.close();
         }

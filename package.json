@@ -1,15 +1,32 @@
 {
-  "name": "ecommerce-bot",
-  "version": "2.0.0",
+  "name": "coupang-bot",
+  "version": "1.0.0",
+  "main": "dist/main.js",
   "scripts": {
-    "start": "tsx src/index.ts"
+    "build": "tsc",
+    "start": "npm run build && electron .",
+    "pack": "npm run build && electron-builder --win --x64"
   },
   "dependencies": {
     "patchright": "latest"
   },
   "devDependencies": {
     "@types/node": "^20.0.0",
+    "electron": "^41.0.4",
+    "electron-builder": "^26.8.1",
     "tsx": "^4.7.0",
     "typescript": "^5.0.0"
+  },
+  "build": {
+    "appId": "com.coupang.bot",
+    "productName": "Coupang Bot",
+    "win": {
+      "target": "portable"
+    },
+    "files": [
+      "dist/**/*",
+      "config/**/*",
+      "src/index.html"
+    ]
   }
 }
