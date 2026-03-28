@@ -3,8 +3,9 @@
     "base_url": "https://www.coupang.com",
     "max_pages_to_search": 3,
     "supabase_url": "https://kbqbpsjwmwbeasrnqbkk.supabase.co",
-    "supabase_key": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImticWJwc2p3bXdiZWFzcm5xYmtrIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzQ2NDczOTIsImV4cCI6MjA5MDIyMzM5Mn0.RRMSweIPrL0yhv2f7ZPMszBz1BlWJVHVDADuuKjzvOg",
-    "supabase_table": "not_found_products"
+    "supabase_key": "",
+    "supabase_table": "not_found_products",
+    "supabase_allow_service_role": false
   },
   "tasks": [
     {
