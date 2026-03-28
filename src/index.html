@@ -138,6 +138,28 @@
         >
       </div>
 
+      <div
+        id="updateSectionSetup"
+        style="
+          display: none;
+          margin: -5px 0 15px;
+          padding: 10px;
+          border-radius: 5px;
+          background: #f4f9ff;
+          border: 1px solid #e1ecf7;
+        "
+      >
+        <label style="color: #2980b9"
+          >Загрузка обновления: <span id="updatePercentSetup">0</span>%</label
+        >
+        <progress
+          id="updateProgressSetup"
+          value="0"
+          max="100"
+          style="width: 100%; height: 16px; margin-top: 8px"
+        ></progress>
+      </div>
+
       <label>Сколько товаров нужно найти?</label>
       <p class="note">
         Введите общее количество товаров для поиска (например, от 1 до 8).
@@ -369,6 +391,12 @@
 
       // Слушатель прогресса скачивания обновления
       window.api.onUpdateProgress((percent) => {
+        const setupSection = document.getElementById("updateSectionSetup");
+        if (setupSection) {
+          setupSection.style.display = "block";
+          document.getElementById("updateProgressSetup").value = percent;
+          document.getElementById("updatePercentSetup").innerText = percent;
+        }
         document.getElementById("updateSection").style.display = "block";
         document.getElementById("updateProgress").value = percent;
         document.getElementById("updatePercent").innerText = percent;

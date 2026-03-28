@@ -8,6 +8,7 @@ import { AutomationEngine } from "./engine";
 const USER_DATA_PATH = app.getPath("userData");
 const WEBHOOK_URL =
   "https://script.google.com/macros/s/AKfycbynrDykyYNXvJDsxtPiGX4NI4nzFC5V9f6ELclKIr436nXikOTCcd2snXYIL95Xrhk2/exec";
+let autoUpdaterInitialized = false;
 
 // Обработчик получения версии приложения
 ipcMain.handle("get-version", () => {
@@ -68,41 +69,78 @@ function createWindow() {
 
   win.loadFile(path.join(__dirname, "../src/index.html"));
 
-  setupAutoUpdater(win);
+  win.webContents.once("did-finish-load", () => {
+    setupAutoUpdater(win);
+  });
 }
 
 // Функция для управления процессом обновления
 function setupAutoUpdater(win: BrowserWindow) {
-  autoUpdater.checkForUpdatesAndNotify();
+  if (autoUpdaterInitialized) return;
+  autoUpdaterInitialized = true;
+
+  if (!app.isPackaged) {
+    win.webContents.send(
+      "update-status",
+      "Автообновление доступно только в собранной версии.",
+    );
+    return;
+  }
+
+  const sendStatus = (text: string) => {
+    if (!win.isDestroyed()) win.webContents.send("update-status", text);
+  };
+
+  const sendProgress = (percent: number) => {
+    if (!win.isDestroyed()) win.webContents.send("update-progress", percent);
+  };
+
+  const sendLog = (msg: string) => {
+    if (!win.isDestroyed()) win.webContents.send("bot-log", msg);
+  };
+
+  autoUpdater.autoDownload = true;
+  autoUpdater.autoInstallOnAppQuit = true;
+
+  autoUpdater.on("checking-for-update", () => {
+    sendStatus("Проверяю обновления...");
+  });
 
   autoUpdater.on("update-available", () => {
     // Отправляем текст статуса на главный экран
-    win.webContents.send(
-      "update-status",
-      "Найдено обновление. Загрузка в фоне...",
-    );
-    win.webContents.send(
-      "bot-log",
-      "[СИСТЕМА] Найдено обновление. Начинаю загрузку...",
-    );
+    sendStatus("Найдено обновление. Загрузка в фоне...");
+    sendLog("[СИСТЕМА] Найдено обновление. Начинаю загрузку...");
+  });
+
+  autoUpdater.on("update-not-available", () => {
+    sendStatus("Установлена последняя версия");
   });
 
   autoUpdater.on("download-progress", (progressObj) => {
-    const percent = Math.round(progressObj.percent);
-    win.webContents.send("update-progress", percent);
+    const percent = Math.max(0, Math.min(100, Math.round(progressObj.percent)));
+    sendProgress(percent);
     // Показываем проценты на главном экране
-    win.webContents.send("update-status", `Скачивание обновления: ${percent}%`);
+    sendStatus(`Скачивание обновления: ${percent}%`);
   });
 
   autoUpdater.on("update-downloaded", () => {
-    win.webContents.send("update-status", "Обновление готово. Перезапуск...");
-    win.webContents.send(
-      "bot-log",
-      "[СИСТЕМА] Обновление загружено. Перезапуск через 3 секунды...",
-    );
+    sendStatus("Обновление готово. Перезапуск...");
+    sendLog("[СИСТЕМА] Обновление загружено. Перезапуск через 3 секунды...");
     setTimeout(() => {
       autoUpdater.quitAndInstall();
     }, 3000);
+  });
+
+  autoUpdater.on("error", (error) => {
+    const message = error?.message || String(error || "Неизвестная ошибка");
+    sendStatus(`Ошибка обновления: ${message}`);
+    sendLog(`[СИСТЕМА] Ошибка обновления: ${message}`);
+  });
+
+  autoUpdater.checkForUpdatesAndNotify().catch((error) => {
+    const message = error?.message || String(error || "Неизвестная ошибка");
+    sendStatus(`Ошибка обновления: ${message}`);
+    sendLog(`[СИСТЕМА] Ошибка обновления: ${message}`);
   });
 }
 
