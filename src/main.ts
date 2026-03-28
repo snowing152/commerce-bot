@@ -7,6 +7,10 @@ import { AutomationEngine } from "./engine";
 // Получаем системную папку для хранения изменяемых данных (в Windows это AppData/Roaming/Coupang Bot)
 const USER_DATA_PATH = app.getPath("userData");
 let autoUpdaterInitialized = false;
+let updateRetryTimer: NodeJS.Timeout | null = null;
+let updateRetryAttempt = 0;
+const UPDATE_RETRY_BASE_MS = 15000;
+const UPDATE_RETRY_MAX_MS = 300000;
 
 // Обработчик получения версии приложения
 ipcMain.handle("get-version", () => {
@@ -107,20 +111,67 @@ function setupAutoUpdater(win: BrowserWindow) {
     if (!win.isDestroyed()) win.webContents.send("bot-log", msg);
   };
 
+  const sendUpdateError = (
+    message: string | null,
+    retryInSec: number | null,
+    attempt: number | null,
+  ) => {
+    if (!win.isDestroyed())
+      win.webContents.send("update-error", {
+        message,
+        retryInSec,
+        attempt,
+      });
+  };
+
+  const clearUpdateError = () => {
+    sendUpdateError(null, null, null);
+  };
+
+  const scheduleRetry = (message: string) => {
+    updateRetryAttempt += 1;
+    const delay = Math.min(
+      UPDATE_RETRY_MAX_MS,
+      UPDATE_RETRY_BASE_MS * Math.pow(2, updateRetryAttempt - 1),
+    );
+    const retryInSec = Math.ceil(delay / 1000);
+
+    if (updateRetryTimer) clearTimeout(updateRetryTimer);
+
+    sendUpdateError(message, retryInSec, updateRetryAttempt);
+    sendStatus(`Ошибка обновления. Повтор через ${retryInSec} сек.`);
+
+    updateRetryTimer = setTimeout(() => {
+      if (!win.isDestroyed()) {
+        sendStatus("Повторяю проверку обновлений...");
+      }
+      autoUpdater.checkForUpdatesAndNotify().catch((error) => {
+        const nextMessage =
+          error?.message || String(error || "Неизвестная ошибка");
+        scheduleRetry(nextMessage);
+      });
+    }, delay);
+  };
+
   autoUpdater.autoDownload = true;
   autoUpdater.autoInstallOnAppQuit = true;
 
   autoUpdater.on("checking-for-update", () => {
+    clearUpdateError();
     sendStatus("Проверяю обновления...");
   });
 
   autoUpdater.on("update-available", () => {
+    updateRetryAttempt = 0;
+    clearUpdateError();
     // Отправляем текст статуса на главный экран
     sendStatus("Найдено обновление. Загрузка в фоне...");
     sendLog("[СИСТЕМА] Найдено обновление. Начинаю загрузку...");
   });
 
   autoUpdater.on("update-not-available", () => {
+    updateRetryAttempt = 0;
+    clearUpdateError();
     sendStatus("Установлена последняя версия");
   });
 
@@ -132,6 +183,8 @@ function setupAutoUpdater(win: BrowserWindow) {
   });
 
   autoUpdater.on("update-downloaded", () => {
+    updateRetryAttempt = 0;
+    clearUpdateError();
     sendStatus("Обновление готово. Перезапуск...");
     sendLog("[СИСТЕМА] Обновление загружено. Перезапуск через 3 секунды...");
     setTimeout(() => {
@@ -141,14 +194,14 @@ function setupAutoUpdater(win: BrowserWindow) {
 
   autoUpdater.on("error", (error) => {
     const message = error?.message || String(error || "Неизвестная ошибка");
-    sendStatus(`Ошибка обновления: ${message}`);
     sendLog(`[СИСТЕМА] Ошибка обновления: ${message}`);
+    scheduleRetry(message);
   });
 
   autoUpdater.checkForUpdatesAndNotify().catch((error) => {
     const message = error?.message || String(error || "Неизвестная ошибка");
-    sendStatus(`Ошибка обновления: ${message}`);
     sendLog(`[СИСТЕМА] Ошибка обновления: ${message}`);
+    scheduleRetry(message);
   });
 }
 
