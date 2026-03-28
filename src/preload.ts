@@ -14,4 +14,11 @@ contextBridge.exposeInMainWorld("api", {
   getVersion: () => ipcRenderer.invoke("get-version"),
   onUpdateStatus: (callback: (text: string) => void) =>
     ipcRenderer.on("update-status", (_event, text) => callback(text)),
+  onUpdateError: (
+    callback: (payload: {
+      message: string | null;
+      retryInSec: number | null;
+      attempt: number | null;
+    }) => void,
+  ) => ipcRenderer.on("update-error", (_event, payload) => callback(payload)),
 });

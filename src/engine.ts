@@ -39,14 +39,37 @@ export class AutomationEngine {
     }
   }
 
+  private getSupabaseKeyRole(key: string): string | null {
+    const parts = key.split(".");
+    if (parts.length !== 3) return null;
+    try {
+      const payload = JSON.parse(
+        Buffer.from(parts[1], "base64").toString("utf-8"),
+      );
+      return payload?.role || null;
+    } catch (_) {
+      return null;
+    }
+  }
+
   private async saveNotFoundToSupabase(record: any) {
     const settings = this.config?.settings || {};
-    const supabaseUrl = settings.supabase_url;
-    const supabaseKey = settings.supabase_key;
+    const supabaseUrl = settings.supabase_url || process.env.SUPABASE_URL;
+    const supabaseKey = settings.supabase_key || process.env.SUPABASE_ANON_KEY;
     const supabaseTable = settings.supabase_table || "not_found_products";
+    const allowServiceRole = settings.supabase_allow_service_role === true;
 
     if (!supabaseUrl || !supabaseKey) {
       await this.writeNotFoundFallback(record, "supabase_not_configured");
+      return;
+    }
+
+    const keyRole = this.getSupabaseKeyRole(supabaseKey);
+    if (keyRole === "service_role" && !allowServiceRole) {
+      this.log(
+        "  [WARNING] Supabase service_role ключ запрещен. Используйте anon ключ.",
+      );
+      await this.writeNotFoundFallback(record, "supabase_service_role_blocked");
       return;
     }
 
@@ -85,13 +108,32 @@ export class AutomationEngine {
     }
   }
 
-  private async reportNotFound(task: any, page: Page) {
+  private async reportNotFound(
+    task: any,
+    page: Page,
+    searchTimeMs: number,
+    maxPagesToSearch: number,
+    pageNumberReached: number,
+    cardsScanned: number,
+  ) {
+    let pageTitle = "";
+    try {
+      pageTitle = await page.title();
+    } catch (_) {
+      pageTitle = "";
+    }
+
     const record = {
       keyword: task.keyword,
       target_name: task.target_name,
       search_url: page.url(),
+      page_title: pageTitle,
       filters: task.filters || [],
       cost: task.cost || [],
+      search_time_ms: searchTimeMs,
+      max_pages_to_search: maxPagesToSearch,
+      page_number_reached: pageNumberReached,
+      cards_scanned: cardsScanned,
       created_at: new Date().toISOString(),
     };
 
@@ -421,6 +463,9 @@ export class AutomationEngine {
 
     try {
       for (const task of this.config.tasks) {
+        const searchStartedAt = Date.now();
+        let lastPageReached = 0;
+        let cardsScanned = 0;
         this.log(`\n=== ПОИСК: ${task.keyword} ===`);
 
         const inp = page.locator(this.selectors.search_bar).first();
@@ -454,6 +499,7 @@ export class AutomationEngine {
         const maxP = this.config.settings.max_pages_to_search || 3;
 
         for (let p = 1; p <= maxP; p++) {
+          lastPageReached = p;
           this.log(`  Страница ${p}...`);
           await page.evaluate(() => window.scrollBy(0, 400));
           await Humanizer.wait(1200, 2500);
@@ -466,6 +512,7 @@ export class AutomationEngine {
           }
 
           for (let i = 0; i < count; i++) {
+            cardsScanned += 1;
             const name = await this.getName(cards.nth(i));
             if (!name) continue;
             const target = task.target_name
@@ -540,7 +587,15 @@ export class AutomationEngine {
           this.log(
             `  [ERROR] Не найден: "${task.target_name.slice(0, 35)}..."`,
           );
-          await this.reportNotFound(task, page);
+          const searchTimeMs = Date.now() - searchStartedAt;
+          await this.reportNotFound(
+            task,
+            page,
+            searchTimeMs,
+            maxP,
+            lastPageReached,
+            cardsScanned,
+          );
         }
         const pause = Math.floor(Math.random() * 12 + 8);
         await Humanizer.wait(pause * 1000, pause * 1000 + 4000);
