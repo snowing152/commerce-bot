@@ -5,7 +5,6 @@ import * as path from "path";
 import { spawn } from "child_process";
 import * as os from "os";
 import { Humanizer, isCDPReady, waitForCDP } from "./utils";
-import { autoUpdater } from "electron-updater";
 
 const DEBUG_PORT = 9222;
 
@@ -27,6 +26,76 @@ export class AutomationEngine {
   private log(msg: string) {
     console.log(msg); // Оставляем для консоли на всякий случай
     if (this.onLog) this.onLog(msg); // Отправляем в графический интерфейс
+  }
+
+  private async writeNotFoundFallback(record: any, reason: string) {
+    const filePath = path.join(this.userDataPath, "not_found.jsonl");
+    const payload = { ...record, reason };
+    try {
+      await fs.appendFile(filePath, `${JSON.stringify(payload)}\n`);
+      this.log(`  [INFO] Not-found записан локально (${reason}).`);
+    } catch (e: any) {
+      this.log(`  [WARNING] Не удалось сохранить not-found: ${e.message}`);
+    }
+  }
+
+  private async saveNotFoundToSupabase(record: any) {
+    const settings = this.config?.settings || {};
+    const supabaseUrl = settings.supabase_url;
+    const supabaseKey = settings.supabase_key;
+    const supabaseTable = settings.supabase_table || "not_found_products";
+
+    if (!supabaseUrl || !supabaseKey) {
+      await this.writeNotFoundFallback(record, "supabase_not_configured");
+      return;
+    }
+
+    if (typeof fetch !== "function") {
+      await this.writeNotFoundFallback(record, "fetch_unavailable");
+      return;
+    }
+
+    const endpoint = `${String(supabaseUrl).replace(/\/$/, "")}/rest/v1/${supabaseTable}`;
+
+    try {
+      const response = await fetch(endpoint, {
+        method: "POST",
+        headers: {
+          apikey: supabaseKey,
+          Authorization: `Bearer ${supabaseKey}`,
+          "Content-Type": "application/json",
+          Prefer: "return=minimal",
+        },
+        body: JSON.stringify(record),
+      });
+
+      if (!response.ok) {
+        const errorText = await response.text().catch(() => "");
+        await this.writeNotFoundFallback(record, `supabase_${response.status}`);
+        this.log(
+          `  [WARNING] Supabase ошибка: ${response.status} ${errorText}`,
+        );
+        return;
+      }
+
+      this.log("  [SUCCESS] Not-found записан в Supabase.");
+    } catch (e: any) {
+      await this.writeNotFoundFallback(record, "supabase_exception");
+      this.log(`  [WARNING] Supabase исключение: ${e.message}`);
+    }
+  }
+
+  private async reportNotFound(task: any, page: Page) {
+    const record = {
+      keyword: task.keyword,
+      target_name: task.target_name,
+      search_url: page.url(),
+      filters: task.filters || [],
+      cost: task.cost || [],
+      created_at: new Date().toISOString(),
+    };
+
+    await this.saveNotFoundToSupabase(record);
   }
 
   private async loadConfigs() {
@@ -467,10 +536,12 @@ export class AutomationEngine {
           if (!nextOk) break;
         }
 
-        if (!found)
+        if (!found) {
           this.log(
             `  [ERROR] Не найден: "${task.target_name.slice(0, 35)}..."`,
           );
+          await this.reportNotFound(task, page);
+        }
         const pause = Math.floor(Math.random() * 12 + 8);
         await Humanizer.wait(pause * 1000, pause * 1000 + 4000);
       }

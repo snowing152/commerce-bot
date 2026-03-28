@@ -1,12 +1,15 @@
 {
   "settings": {
     "base_url": "https://www.coupang.com",
-    "max_pages_to_search": 3
+    "max_pages_to_search": 3,
+    "supabase_url": "https://kbqbpsjwmwbeasrnqbkk.supabase.co",
+    "supabase_key": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImticWJwc2p3bXdiZWFzcm5xYmtrIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzQ2NDczOTIsImV4cCI6MjA5MDIyMzM5Mn0.RRMSweIPrL0yhv2f7ZPMszBz1BlWJVHVDADuuKjzvOg",
+    "supabase_table": "not_found_products"
   },
   "tasks": [
     {
-      "keyword": "모공수축크림",
-      "target_name": "투집 포어본드 모공수축크림, 1개, 50ml",
+      "keyword": "레몬 주스",
+      "target_name": "레이지레몬 주스, 200ml, 1개",
       "filters": [],
       "cost": []
     }

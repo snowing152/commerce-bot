@@ -6,35 +6,11 @@ import { AutomationEngine } from "./engine";
 
 // Получаем системную папку для хранения изменяемых данных (в Windows это AppData/Roaming/Coupang Bot)
 const USER_DATA_PATH = app.getPath("userData");
-const WEBHOOK_URL =
-  "https://script.google.com/macros/s/AKfycbynrDykyYNXvJDsxtPiGX4NI4nzFC5V9f6ELclKIr436nXikOTCcd2snXYIL95Xrhk2/exec";
 let autoUpdaterInitialized = false;
 
 // Обработчик получения версии приложения
 ipcMain.handle("get-version", () => {
   return app.getVersion();
-});
-
-// Обработчик отправки логов на прокси-сервер
-ipcMain.handle("send-telegram-logs", async (event, logs) => {
-  try {
-    const message = `🚨 Логи Coupang Bot v${app.getVersion()}\n\n${logs}`;
-
-    const response = await fetch(WEBHOOK_URL, {
-      method: "POST",
-      // МЕНЯЕМ ЗАГОЛОВОК: text/plain проходит через защиты Google без проблем
-      headers: { "Content-Type": "text/plain;charset=utf-8" },
-      body: JSON.stringify({ text: message.substring(0, 4000) }),
-      redirect: "follow", // Обязательно следуем за переадресацией Google
-    });
-
-    // Читаем ответ как текст, а не как строгий JSON
-    const resultText = await response.text();
-    return resultText.includes("success");
-  } catch (error) {
-    console.error("Ошибка отправки логов на Webhook:", error);
-    return false;
-  }
 });
 
 // Функция для безопасного копирования базовых конфигов при первом запуске
@@ -48,8 +24,40 @@ function setupUserFiles() {
 
   if (!fs.existsSync(configDest) && fs.existsSync(configSrc)) {
     fs.copyFileSync(configSrc, configDest);
+  } else if (fs.existsSync(configDest) && fs.existsSync(configSrc)) {
+    try {
+      const userConfig = JSON.parse(fs.readFileSync(configDest, "utf-8"));
+      const defaultConfig = JSON.parse(fs.readFileSync(configSrc, "utf-8"));
+      const defaultSettings =
+        defaultConfig && typeof defaultConfig === "object"
+          ? defaultConfig.settings || {}
+          : {};
+      const userSettings =
+        userConfig && typeof userConfig === "object"
+          ? userConfig.settings || {}
+          : {};
+
+      let changed = false;
+      for (const [key, value] of Object.entries(defaultSettings)) {
+        if (userSettings[key] === undefined) {
+          userSettings[key] = value;
+          changed = true;
+        }
+      }
+
+      if (changed) {
+        if (userConfig && typeof userConfig === "object") {
+          userConfig.settings = userSettings;
+          fs.writeFileSync(configDest, JSON.stringify(userConfig, null, 2));
+        }
+      }
+    } catch (error) {
+      console.warn("Не удалось обновить настройки конфигурации:", error);
+    }
   }
-  if (!fs.existsSync(selectorsDest) && fs.existsSync(selectorsSrc)) {
+
+  // Селекторы копируем ВСЕГДА (принудительно обновляем базу локаторов)
+  if (fs.existsSync(selectorsSrc)) {
     fs.copyFileSync(selectorsSrc, selectorsDest);
   }
 }
@@ -145,24 +153,7 @@ function setupAutoUpdater(win: BrowserWindow) {
 }
 
 app.whenReady().then(() => {
-  // Функция для копирования конфигов
-  function setupUserFiles() {
-    const configDest = path.join(USER_DATA_PATH, "config.json");
-    const selectorsDest = path.join(USER_DATA_PATH, "selectors.json");
-
-    const configSrc = path.join(__dirname, "../config/config.json");
-    const selectorsSrc = path.join(__dirname, "../config/selectors.json");
-
-    // Конфиг копируем ТОЛЬКО если его нет (чтобы не затереть задачи пользователя)
-    if (!fs.existsSync(configDest) && fs.existsSync(configSrc)) {
-      fs.copyFileSync(configSrc, configDest);
-    }
-
-    // Селекторы копируем ВСЕГДА (принудительно обновляем базу локаторов)
-    if (fs.existsSync(selectorsSrc)) {
-      fs.copyFileSync(selectorsSrc, selectorsDest);
-    }
-  }
+  setupUserFiles();
   createWindow();
 });
 
