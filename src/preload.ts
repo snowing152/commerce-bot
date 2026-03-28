@@ -14,6 +14,4 @@ contextBridge.exposeInMainWorld("api", {
   getVersion: () => ipcRenderer.invoke("get-version"),
   onUpdateStatus: (callback: (text: string) => void) =>
     ipcRenderer.on("update-status", (_event, text) => callback(text)),
-  sendLogsToTelegram: (logs: string) =>
-    ipcRenderer.invoke("send-telegram-logs", logs),
 });

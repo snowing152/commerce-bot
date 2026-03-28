@@ -227,15 +227,6 @@
         Показать скриншот в папке
       </button>
 
-      <button id="btnSendLogs" style="background: #8e44ad; margin-top: 10px">
-        Отправить логи разработчику
-      </button>
-      <p
-        id="logStatus"
-        class="note"
-        style="text-align: center; margin-top: 5px"
-      ></p>
-
       <button id="btnMainMenu" class="secondary">
         Вернуться в главное меню
       </button>
@@ -253,28 +244,6 @@
         document.getElementById("updateStatusText").style.color = "#e67e22";
       });
 
-      // Обработчик кнопки отправки логов
-      document.getElementById("btnSendLogs").addEventListener("click", () => {
-        const btn = document.getElementById("btnSendLogs");
-        const status = document.getElementById("logStatus");
-
-        btn.disabled = true;
-        status.innerText = "Отправка...";
-
-        // Берем весь текст из черного окна логов
-        const logs = document.getElementById("logConsole").innerText;
-
-        window.api.sendLogsToTelegram(logs).then((success) => {
-          if (success) {
-            status.innerText = "Логи успешно отправлены!";
-            status.style.color = "#27ae60";
-          } else {
-            status.innerText = "Ошибка при отправке логов.";
-            status.style.color = "#c0392b";
-            btn.disabled = false;
-          }
-        });
-      });
       // Навигация по экранам
       function switchView(viewId) {
         document
