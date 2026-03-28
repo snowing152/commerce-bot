@@ -139,6 +139,20 @@
       </div>
 
       <div
+        id="updateErrorBox"
+        style="
+          display: none;
+          background: #fdecea;
+          color: #c0392b;
+          border: 1px solid #f5c6cb;
+          border-radius: 6px;
+          padding: 10px;
+          margin-bottom: 12px;
+          font-size: 12px;
+        "
+      ></div>
+
+      <div
         id="updateSectionSetup"
         style="
           display: none;
@@ -242,6 +256,19 @@
       window.api.onUpdateStatus((statusText) => {
         document.getElementById("updateStatusText").innerText = statusText;
         document.getElementById("updateStatusText").style.color = "#e67e22";
+      });
+
+      window.api.onUpdateError(({ message, retryInSec, attempt }) => {
+        const box = document.getElementById("updateErrorBox");
+        if (!message) {
+          box.style.display = "none";
+          return;
+        }
+        const retryText =
+          retryInSec !== null ? ` Повтор через ${retryInSec} сек.` : "";
+        const attemptText = attempt ? ` (попытка ${attempt})` : "";
+        box.innerText = `Ошибка обновления: ${message}.${retryText}${attemptText}`;
+        box.style.display = "block";
       });
 
       // Навигация по экранам
