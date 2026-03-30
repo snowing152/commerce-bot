@@ -4,13 +4,12 @@ import { promises as fs, existsSync } from "fs";
 import * as path from "path";
 import { spawn } from "child_process";
 import * as os from "os";
-import { Humanizer, isCDPReady, waitForCDP } from "./utils";
-
-const DEBUG_PORT = 9222;
+import { Humanizer, getFreePort, isCDPReady, waitForCDP } from "./utils";
 
 export class AutomationEngine {
   private config: any;
   private selectors: any;
+  private debugPort = 9222;
 
   // Удаляем это: private rootDir = path.join(__dirname, '..');
   // ДОБАВЛЯЕМ ЭТО:
@@ -218,6 +217,11 @@ export class AutomationEngine {
       );
     }
 
+    // Await the allocation of a free port dynamically before building arguments
+    const dynamicDebugPort = await getFreePort(this.debugPort);
+    this.debugPort = dynamicDebugPort;
+    this.log(`[INFO] Allocated dynamic debugging port: ${dynamicDebugPort}`);
+
     const profileDir = path.join(this.userDataPath, "chrome_debug_profile");
     if (!existsSync(profileDir)) {
       try {
@@ -233,7 +237,7 @@ export class AutomationEngine {
     }
 
     const args = [
-      `--remote-debugging-port=${DEBUG_PORT}`,
+      `--remote-debugging-port=${dynamicDebugPort}`,
       `--remote-debugging-address=127.0.0.1`,
       `--user-data-dir=${profileDir}`,
       "--incognito",
@@ -498,11 +502,11 @@ export class AutomationEngine {
       await fs.mkdir(shots, { recursive: true });
     }
 
-    this.log(`Проверяю порт отладки ${DEBUG_PORT}...`);
-    if (!(await isCDPReady(DEBUG_PORT))) {
+    this.log(`Проверяю порт отладки ${this.debugPort}...`);
+    if (!(await isCDPReady(this.debugPort))) {
       this.log("[INFO] Браузер закрыт. Запускаю автоматически...");
       await this.launchBrowser();
-      if (!(await waitForCDP(DEBUG_PORT, 15000))) {
+      if (!(await waitForCDP(this.debugPort, 15000))) {
         throw new Error(`Не удалось подключиться к браузеру.`);
       }
     }
@@ -511,7 +515,7 @@ export class AutomationEngine {
     let browser: Browser;
     try {
       browser = await patchright.chromium.connectOverCDP(
-        `http://127.0.0.1:${DEBUG_PORT}`,
+        `http://127.0.0.1:${this.debugPort}`,
       );
     } catch (e: any) {
       throw new Error(`Ошибка подключения: ${e.message}`);

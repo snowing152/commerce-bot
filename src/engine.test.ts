@@ -1,7 +1,22 @@
 import { promises as fs } from "fs";
 import * as path from "path";
 import * as os from "os";
+import * as fsSync from "fs";
+import { spawn } from "child_process";
 import { AutomationEngine } from "./engine";
+import * as utils from "./utils";
+
+// Mock the 'fs' module globally for this test file
+jest.mock("fs", () => ({
+  // Retain all actual 'fs' functions so we don't break other internals
+  ...jest.requireActual("fs"),
+  // Replace only existsSync with a Jest mock function
+  existsSync: jest.fn(),
+}));
+
+jest.mock("child_process", () => ({
+  spawn: jest.fn(() => ({ unref: jest.fn() })),
+}));
 
 describe("Интеграционные тесты AutomationEngine", () => {
   let tempUserDataPath: string;
@@ -101,5 +116,32 @@ describe("AutomationEngine Error Handling", () => {
 
     // Clean up the spy to prevent memory leaks in the test runner
     logSpy.mockRestore();
+  });
+});
+
+describe("AutomationEngine Launch", () => {
+  afterEach(() => {
+    jest.restoreAllMocks();
+    delete process.env.CHROME_PATH;
+  });
+
+  it("should pass the dynamic port to browser launch arguments", async () => {
+    // Force the helper to return a specific port for this test
+    const portSpy = jest.spyOn(utils, "getFreePort").mockResolvedValue(44444);
+    (fsSync.existsSync as jest.Mock).mockReturnValue(true);
+
+    process.env.CHROME_PATH = "C:\\fake\\chrome.exe";
+
+    const engine = new AutomationEngine("/fake/path");
+    await (engine as any).launchBrowser();
+
+    expect(portSpy).toHaveBeenCalledWith(9222);
+    expect(spawn).toHaveBeenCalledWith(
+      "C:\\fake\\chrome.exe",
+      expect.arrayContaining(["--remote-debugging-port=44444"]),
+      expect.objectContaining({ stdio: "ignore", detached: true }),
+    );
+
+    portSpy.mockRestore();
   });
 });
