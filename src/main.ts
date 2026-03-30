@@ -4,7 +4,7 @@ import * as fs from "fs";
 import { autoUpdater } from "electron-updater";
 import { AutomationEngine } from "./engine";
 
-// Получаем системную папку для хранения изменяемых данных (в Windows это AppData/Roaming/Coupang Bot)
+// Get the system user data folder (on Windows this is AppData/Roaming/Coupang Bot)
 const USER_DATA_PATH = app.getPath("userData");
 let autoUpdaterInitialized = false;
 let updateRetryTimer: NodeJS.Timeout | null = null;
@@ -12,17 +12,17 @@ let updateRetryAttempt = 0;
 const UPDATE_RETRY_BASE_MS = 15000;
 const UPDATE_RETRY_MAX_MS = 300000;
 
-// Обработчик получения версии приложения
+// Handler for retrieving the app version
 ipcMain.handle("get-version", () => {
   return app.getVersion();
 });
 
-// Функция для безопасного копирования базовых конфигов при первом запуске
+// Safely copy base configs on first launch
 function setupUserFiles() {
   const configDest = path.join(USER_DATA_PATH, "config.json");
   const selectorsDest = path.join(USER_DATA_PATH, "selectors.json");
 
-  // Исходные файлы внутри защищенного архива программы
+  // Source files inside the packaged app archive
   const configSrc = path.join(__dirname, "../config/config.json");
   const selectorsSrc = path.join(__dirname, "../config/selectors.json");
 
@@ -60,7 +60,7 @@ function setupUserFiles() {
     }
   }
 
-  // Селекторы копируем ВСЕГДА (принудительно обновляем базу локаторов)
+  // Always copy selectors (force refresh of the locator baseline)
   if (fs.existsSync(selectorsSrc)) {
     fs.copyFileSync(selectorsSrc, selectorsDest);
   }
@@ -86,7 +86,7 @@ function createWindow() {
   });
 }
 
-// Функция для управления процессом обновления
+// Manages the update workflow
 function setupAutoUpdater(win: BrowserWindow) {
   if (autoUpdaterInitialized) return;
   autoUpdaterInitialized = true;
@@ -164,7 +164,7 @@ function setupAutoUpdater(win: BrowserWindow) {
   autoUpdater.on("update-available", () => {
     updateRetryAttempt = 0;
     clearUpdateError();
-    // Отправляем текст статуса на главный экран
+    // Send status text to the main screen
     sendStatus("Найдено обновление. Загрузка в фоне...");
     sendLog("[СИСТЕМА] Найдено обновление. Начинаю загрузку...");
   });
@@ -178,7 +178,7 @@ function setupAutoUpdater(win: BrowserWindow) {
   autoUpdater.on("download-progress", (progressObj) => {
     const percent = Math.max(0, Math.min(100, Math.round(progressObj.percent)));
     sendProgress(percent);
-    // Показываем проценты на главном экране
+    // Show the percentage on the main screen
     sendStatus(`Скачивание обновления: ${percent}%`);
   });
 
@@ -216,7 +216,7 @@ app.on("window-all-closed", () => {
 
 ipcMain.on("start-bot", async (event, tasksArray) => {
   try {
-    // Теперь мы читаем и пишем в разрешенную папку AppData
+    // Read and write in the permitted AppData directory
     const configPath = path.join(USER_DATA_PATH, "config.json");
 
     const rawConfig = fs.readFileSync(configPath, "utf-8");
@@ -225,7 +225,7 @@ ipcMain.on("start-bot", async (event, tasksArray) => {
     config.tasks = tasksArray;
     fs.writeFileSync(configPath, JSON.stringify(config, null, 2));
 
-    // Передаем путь к AppData внутрь движка, чтобы он знал, куда сохранять скриншоты
+    // Pass the AppData path to the engine so it can save screenshots there
     const engine = new AutomationEngine(USER_DATA_PATH);
 
     engine.onLog = (msg) => event.reply("bot-log", msg);

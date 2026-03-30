@@ -4,32 +4,32 @@ import { Humanizer, getFreePort } from "./utils";
 // Tell Jest to intercept calls to the 'net' module
 jest.mock("net");
 
-// Описание группы тестов для класса Humanizer
+// Test group for the Humanizer class
 describe("Humanizer Utilities", () => {
-  // Тест 1: Проверка формата даты
-  test("date() должен возвращать строку в правильном формате", () => {
+  // Test 1: Date format check
+  test("date() should return a string in the correct format", () => {
     const dateStr = Humanizer.date();
 
-    // Регулярное выражение для проверки формата data(YYYY.MM.DD HH.MM)
+    // Regex to validate data(YYYY.MM.DD HH.MM)
     const regex = /^data\(\d{4}\.\d{2}\.\d{2} \d{2}\.\d{2}\)$/;
 
-    // Ожидаем, что результат соответствует регулярному выражению
+    // Expect the result to match the regex
     expect(dateStr).toMatch(regex);
   });
 
-  // Тест 2: Проверка функции задержки (асинхронный тест)
-  test("wait() должен задерживать выполнение на заданный промежуток времени", async () => {
+  // Test 2: wait() duration check (async test)
+  test("wait() should delay execution within the specified range", async () => {
     const start = Date.now();
     const minTime = 100;
     const maxTime = 200;
 
-    // Вызов тестируемой функции
+    // Call the function under test
     await Humanizer.wait(minTime, maxTime);
     const duration = Date.now() - start;
 
-    // Ожидаем, что задержка больше минимальной (с небольшим допуском на обработку Node.js)
+    // Expect delay to be above the minimum (allow small Node.js timing variance)
     expect(duration).toBeGreaterThanOrEqual(minTime - 5);
-    // Ожидаем, что задержка меньше или равна максимальной (+ допуск)
+    // Expect delay to be below the maximum (with tolerance)
     expect(duration).toBeLessThanOrEqual(maxTime + 20);
   });
 });

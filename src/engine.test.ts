@@ -18,17 +18,17 @@ jest.mock("child_process", () => ({
   spawn: jest.fn(() => ({ unref: jest.fn() })),
 }));
 
-describe("Интеграционные тесты AutomationEngine", () => {
+describe("AutomationEngine integration tests", () => {
   let tempUserDataPath: string;
   let engine: AutomationEngine;
 
-  // Фейковые данные для проверки
+  // Mock data for validation
   const mockConfig = {
     settings: { base_url: "https://mock-coupang.com" },
     tasks: [
       {
-        keyword: "тест",
-        target_name: "тестовый товар",
+        keyword: "test",
+        target_name: "test product",
         filters: ["rocket"],
         cost: [],
       },
@@ -40,12 +40,12 @@ describe("Интеграционные тесты AutomationEngine", () => {
     add_to_cart_btn: ".mock-btn",
   };
 
-  // beforeAll запускается один раз ПЕРЕД всеми тестами в этом блоке
+  // beforeAll runs once before all tests in this block
   beforeAll(async () => {
-    // Создаем уникальную временную папку в системной директории Temp ОС
+    // Create a unique temporary directory under the OS temp path
     tempUserDataPath = await fs.mkdtemp(path.join(os.tmpdir(), "bot-test-"));
 
-    // Записываем наши фейковые настройки в эту временную папку
+    // Write the mock settings into the temp directory
     await fs.writeFile(
       path.join(tempUserDataPath, "config.json"),
       JSON.stringify(mockConfig),
@@ -56,27 +56,25 @@ describe("Интеграционные тесты AutomationEngine", () => {
     );
   });
 
-  // afterAll запускается ПОСЛЕ выполнения всех тестов для очистки мусора
+  // afterAll runs after all tests to clean up
   afterAll(async () => {
-    // Удаляем временную папку вместе со всеми файлами внутри (recursive: true)
+    // Remove the temp directory and its contents (recursive: true)
     await fs.rm(tempUserDataPath, { recursive: true, force: true });
   });
 
-  test("loadConfigs() должен корректно читать и парсить JSON файлы из userDataPath", async () => {
-    // Инициализируем движок, передавая путь к нашей временной папке
+  test("loadConfigs() should read and parse JSON files from userDataPath", async () => {
+    // Initialize the engine with the temp directory path
     engine = new AutomationEngine(tempUserDataPath);
 
-    // Так как loadConfigs() - это приватный метод (private), TypeScript запрещает вызывать его напрямую.
-    // Использование (engine as any) позволяет обойти это ограничение исключительно для целей тестирования,
-    // не меняя архитектуру самого класса и не делая метод публичным.
+    // loadConfigs() is private; casting to any allows direct testing without changing the class.
     await (engine as any).loadConfigs();
 
-    // Проверяем, что данные из файлов успешно загрузились в свойства класса
+    // Verify the data loaded into class properties
     expect((engine as any).config).toEqual(mockConfig);
     expect((engine as any).selectors).toEqual(mockSelectors);
 
-    // Точечная проверка конкретного поля
-    expect((engine as any).config.tasks[0].keyword).toBe("тест");
+    // Spot-check a specific field
+    expect((engine as any).config.tasks[0].keyword).toBe("test");
   });
 });
 
