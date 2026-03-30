@@ -1,6 +1,6 @@
 import * as patchright from "patchright";
 import { Page, Locator, Browser, BrowserContext, chromium } from "patchright";
-import { promises as fs, existsSync } from "fs";
+import { promises as fs, existsSync, appendFileSync } from "fs";
 import * as path from "path";
 import { spawn, ChildProcess } from "child_process";
 import * as os from "os";
@@ -55,9 +55,11 @@ export class AutomationEngine {
   private browserProcess: ChildProcess | null = null;
 
   private userDataPath: string;
+  private logFilePath: string;
 
   constructor(userDataPath: string) {
     this.userDataPath = userDataPath;
+    this.logFilePath = path.join(this.userDataPath, "bot_log.txt");
   }
 
   public onLog?: (msg: string) => void;
@@ -66,6 +68,9 @@ export class AutomationEngine {
   // Internal logging helper
   private log(msg: string) {
     console.log(msg); // Keep console output for local debugging
+    try {
+      appendFileSync(this.logFilePath, `${msg}\n`, "utf-8");
+    } catch (_) {}
     if (this.onLog) this.onLog(msg); // Forward to the UI
   }
 
