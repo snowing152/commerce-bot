@@ -1,19 +1,19 @@
 module.exports = {
   preset: "ts-jest",
   testEnvironment: "node",
-  // Явно указываем, как обрабатывать файлы TypeScript
+  // Explicitly specify how to process TypeScript files
   transform: {
     "^.+\\.tsx?$": [
       "ts-jest",
       {
-        tsconfig: "tsconfig.json", // Принудительно используем наши настройки компилятора
+        tsconfig: "tsconfig.json", // Force our compiler settings
       },
     ],
   },
-  // Указываем расширения файлов, которые Jest должен искать
+  // File extensions Jest should resolve
   moduleFileExtensions: ["ts", "tsx", "js", "jsx", "json", "node"],
-  // Пропускаем скомпилированные тесты и зависимости
+  // Skip compiled tests and dependencies
   testPathIgnorePatterns: ["/node_modules/", "/dist/"],
-  // Игнорируем трансформацию для библиотек
+  // Ignore transforms for dependencies
   transformIgnorePatterns: ["/node_modules/"],
 };

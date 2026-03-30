@@ -38,12 +38,11 @@ export async function getFreePort(fallbackPort = 9222): Promise<number> {
 }
 
 /**
- * Класс Humanizer симулирует поведение реального пользователя,
- * добавляя случайные задержки и неточные движения мыши.
+ * Humanizer simulates real user behavior by adding delays and imprecise moves.
  */
 export class Humanizer {
   static async wait(min: number, max: number) {
-    // Использование Math.random() для создания непредсказуемых пауз, чтобы избежать детектирования ботов
+    // Use Math.random() to add unpredictable pauses and reduce bot detection.
     await new Promise((r) =>
       setTimeout(r, Math.floor(Math.random() * (max - min + 1) + min)),
     );
@@ -53,7 +52,7 @@ export class Humanizer {
     try {
       const b = await loc.boundingBox();
       if (b) {
-        // Добавление случайного смещения координат (-5 до +5 пикселей) от центра элемента
+        // Add random offset (-5 to +5 px) from the element center.
         const targetX = b.x + b.width / 2 + (Math.random() * 10 - 5);
         const targetY = b.y + b.height / 2 + (Math.random() * 10 - 5);
         await page.mouse.move(targetX, targetY, { steps: 12 });
@@ -74,9 +73,9 @@ export class Humanizer {
   }
 
   static async simulateReading(page: Page) {
-    console.log("  Читаю страницу товара...");
+    console.log("  Reading product page...");
     for (let i = 0; i < 5; i++) {
-      // Плавный скроллинг имитирует чтение страницы человеком
+      // Smooth scrolling simulates a person reading the page.
       await page.evaluate(() =>
         window.scrollBy({ top: 350, behavior: "smooth" }),
       );
@@ -106,8 +105,8 @@ export class Humanizer {
 }
 
 /**
- * Проверка доступности порта отладки Chrome.
- * Используется AbortController для предотвращения утечек памяти при зависании сетевых запросов.
+ * Checks whether the Chrome debug port is available.
+ * Uses AbortController to avoid hanging network requests.
  */
 export async function isCDPReady(port: number): Promise<boolean> {
   try {
@@ -127,7 +126,7 @@ export async function waitForCDP(port: number, ms = 10000): Promise<boolean> {
   const t = Date.now();
   while (Date.now() - t < ms) {
     if (await isCDPReady(port)) return true;
-    // Задержка в цикле предотвращает 100% загрузку CPU
+    // Small delay prevents 100% CPU usage.
     await new Promise((r) => setTimeout(r, 500));
   }
   return false;

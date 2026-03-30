@@ -6,13 +6,42 @@ import { spawn } from "child_process";
 import * as os from "os";
 import { Humanizer, getFreePort, isCDPReady, waitForCDP } from "./utils";
 
-export class AutomationEngine {
-  private config: any;
-  private selectors: any;
-  private debugPort = 9222;
+export interface Task {
+  keyword: string;
+  target_name: string;
+  filters?: string[];
+  cost?: string[];
+}
 
-  // Удаляем это: private rootDir = path.join(__dirname, '..');
-  // ДОБАВЛЯЕМ ЭТО:
+export interface BotSettings {
+  base_url: string;
+  max_pages_to_search?: number;
+  headless?: boolean;
+  browser_path?: string;
+  supabase_url?: string;
+  supabase_key?: string;
+  supabase_table?: string;
+  supabase_allow_service_role?: boolean;
+}
+
+export interface BotConfig {
+  settings: BotSettings;
+  tasks: Task[];
+}
+
+export interface Selectors {
+  search_bar: string;
+  add_to_cart_btn: string;
+  search_button?: string;
+  cart_link?: string;
+}
+
+export class AutomationEngine {
+  private config!: BotConfig;
+  private selectors!: Selectors;
+  // Store the active port so launch and connect use the same value
+  private currentDebugPort = 9222;
+
   private userDataPath: string;
 
   constructor(userDataPath: string) {
@@ -21,10 +50,10 @@ export class AutomationEngine {
 
   public onLog?: (msg: string) => void;
 
-  // Внутренняя функция логирования
+  // Internal logging helper
   private log(msg: string) {
-    console.log(msg); // Оставляем для консоли на всякий случай
-    if (this.onLog) this.onLog(msg); // Отправляем в графический интерфейс
+    console.log(msg); // Keep console output for local debugging
+    if (this.onLog) this.onLog(msg); // Forward to the UI
   }
 
   /**
@@ -53,9 +82,9 @@ export class AutomationEngine {
     const payload = { ...record, reason };
     try {
       await fs.appendFile(filePath, `${JSON.stringify(payload)}\n`);
-      this.log(`  [INFO] Not-found записан локально (${reason}).`);
+      this.log(`  [INFO] Not-found saved locally (${reason}).`);
     } catch (e: any) {
-      this.log(`  [WARNING] Не удалось сохранить not-found: ${e.message}`);
+      this.log(`  [WARNING] Failed to save not-found: ${e.message}`);
     }
   }
 
@@ -76,7 +105,7 @@ export class AutomationEngine {
   }
 
   private async saveNotFoundToSupabase(record: any) {
-    const settings = this.config?.settings || {};
+    const settings = this.config.settings;
     const supabaseUrl = settings.supabase_url || process.env.SUPABASE_URL;
     const supabaseKey = settings.supabase_key || process.env.SUPABASE_ANON_KEY;
     const supabaseTable = settings.supabase_table || "not_found_products";
@@ -90,7 +119,7 @@ export class AutomationEngine {
     const keyRole = this.getSupabaseKeyRole(supabaseKey);
     if (keyRole === "service_role" && !allowServiceRole) {
       this.log(
-        "  [WARNING] Supabase service_role ключ запрещен. Используйте anon ключ.",
+        "  [WARNING] Supabase service_role key is blocked. Use an anon key.",
       );
       await this.writeNotFoundFallback(record, "supabase_service_role_blocked");
       return;
@@ -118,21 +147,19 @@ export class AutomationEngine {
       if (!response.ok) {
         const errorText = await response.text().catch(() => "");
         await this.writeNotFoundFallback(record, `supabase_${response.status}`);
-        this.log(
-          `  [WARNING] Supabase ошибка: ${response.status} ${errorText}`,
-        );
+        this.log(`  [WARNING] Supabase error: ${response.status} ${errorText}`);
         return;
       }
 
-      this.log("  [SUCCESS] Not-found записан в Supabase.");
+      this.log("  [SUCCESS] Not-found saved to Supabase.");
     } catch (e: any) {
       await this.writeNotFoundFallback(record, "supabase_exception");
-      this.log(`  [WARNING] Supabase исключение: ${e.message}`);
+      this.log(`  [WARNING] Supabase exception: ${e.message}`);
     }
   }
 
   private async reportNotFound(
-    task: any,
+    task: Task,
     page: Page,
     searchTimeMs: number,
     maxPagesToSearch: number,
@@ -172,87 +199,113 @@ export class AutomationEngine {
       path.join(this.userDataPath, "selectors.json"),
       "utf-8",
     );
-    this.config = JSON.parse(configRaw);
-    this.selectors = JSON.parse(selectorsRaw);
+    this.config = JSON.parse(configRaw) as BotConfig;
+    this.selectors = JSON.parse(selectorsRaw) as Selectors;
   }
 
-  private findBrowserPath(): string {
-    const platform = process.platform;
-    const homedir = os.homedir();
-    let candidates: string[] = [];
-
-    if (platform === "win32") {
-      candidates = [
-        "C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe",
-        "C:\\Program Files\\Microsoft\\Edge\\Application\\msedge.exe",
-        "C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe",
-        "C:\\Program Files (x86)\\Google\\Chrome\\Application\\chrome.exe",
-        `${homedir}\\AppData\\Local\\Google\\Chrome\\Application\\chrome.exe`,
-        `${homedir}\\AppData\\Local\\Yandex\\YandexBrowser\\Application\\browser.exe`,
-        "C:\\Program Files\\BraveSoftware\\Brave-Browser\\Application\\brave.exe",
-      ];
-    } else if (platform === "darwin") {
-      candidates = [
-        "/Applications/Microsoft Edge.app/Contents/MacOS/Microsoft Edge",
-        "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
-      ];
+  /**
+   * Determines the executable path for the browser.
+   * Prioritizes config and environment variables for flexible overrides.
+   */
+  private findBrowserPath(customConfigPath?: string): string {
+    if (customConfigPath && existsSync(customConfigPath)) {
+      return customConfigPath;
     }
 
-    const found = candidates.find((p) => existsSync(p));
-    if (found) return found;
+    const envPath =
+      process.env.CHROME_PATH || process.env.PUPPETEER_EXECUTABLE_PATH;
+    if (envPath && existsSync(envPath)) {
+      return envPath;
+    }
 
-    try {
-      const patchrightPath = chromium.executablePath();
-      if (existsSync(patchrightPath)) return patchrightPath;
-    } catch (_) {}
+    const platform = os.platform();
+    const defaultPaths: string[] = [];
 
-    return "";
-  }
+    if (platform === "win32") {
+      const localAppData =
+        process.env.LOCALAPPDATA || path.join(os.homedir(), "AppData", "Local");
 
-  private async launchBrowser() {
-    const browserPath = process.env.CHROME_PATH || this.findBrowserPath();
-    if (!browserPath) {
-      throw new Error(
-        "Подходящий браузер не найден. Выполните установку Chromium.",
+      defaultPaths.push(
+        "C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe",
+        "C:\\Program Files (x86)\\Google\\Chrome\\Application\\chrome.exe",
+        path.join(
+          localAppData,
+          "Google",
+          "Chrome",
+          "Application",
+          "chrome.exe",
+        ),
+        "C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe",
+        "C:\\Program Files\\Microsoft\\Edge\\Application\\msedge.exe",
+      );
+    } else if (platform === "darwin") {
+      defaultPaths.push(
+        "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
+        "/Applications/Microsoft Edge.app/Contents/MacOS/Microsoft Edge",
       );
     }
 
-    // Await the allocation of a free port dynamically before building arguments
-    const dynamicDebugPort = await getFreePort(this.debugPort);
-    this.debugPort = dynamicDebugPort;
-    this.log(`[INFO] Allocated dynamic debugging port: ${dynamicDebugPort}`);
-
-    const profileDir = path.join(this.userDataPath, "chrome_debug_profile");
-    if (!existsSync(profileDir)) {
-      try {
-        await fs.mkdir(profileDir, { recursive: true });
-      } catch (error) {
-        const errMessage =
-          error instanceof Error ? error.message : String(error);
-        // We must explicitly log system-level write errors
-        this.log(
-          `[ERROR] Failed to create user profile directory at ${profileDir}: ${errMessage}`,
-        );
-      }
+    for (const candidate of defaultPaths) {
+      if (existsSync(candidate)) return candidate;
     }
 
-    const args = [
-      `--remote-debugging-port=${dynamicDebugPort}`,
-      `--remote-debugging-address=127.0.0.1`,
-      `--user-data-dir=${profileDir}`,
-      "--incognito",
-      "-inprivate",
-      "--private",
-      "--no-first-run",
-      "--no-default-browser-check",
-      "--disable-extensions",
-      "--lang=ko-KR",
-      "--new-window",
-    ];
+    throw new Error(
+      "Browser executable path not found. Set CHROME_PATH, provide browser_path in config.json, or install Google Chrome.",
+    );
+  }
 
-    this.log(`[INFO] Запуск браузера: ${browserPath}`);
-    const child = spawn(browserPath, args, { stdio: "ignore", detached: true });
-    child.unref();
+  private async launchBrowser() {
+    try {
+      // Allocate the port before any filesystem checks to aid debugging
+      this.currentDebugPort = await getFreePort(this.currentDebugPort);
+      this.log(
+        `[INFO] Allocated dynamic debugging port: ${this.currentDebugPort}`,
+      );
+
+      const browserPath = this.findBrowserPath(
+        this.config?.settings?.browser_path,
+      );
+      this.log(`[INFO] Found browser executable at: ${browserPath}`);
+
+      const profileDir = path.join(this.userDataPath, "chrome_debug_profile");
+      if (!existsSync(profileDir)) {
+        try {
+          await fs.mkdir(profileDir, { recursive: true });
+        } catch (error) {
+          const errMessage =
+            error instanceof Error ? error.message : String(error);
+          // We must explicitly log system-level write errors
+          this.log(
+            `[ERROR] Failed to create user profile directory at ${profileDir}: ${errMessage}`,
+          );
+        }
+      }
+
+      const args = [
+        `--remote-debugging-port=${this.currentDebugPort}`,
+        `--remote-debugging-address=127.0.0.1`,
+        `--user-data-dir=${profileDir}`,
+        "--incognito",
+        "-inprivate",
+        "--private",
+        "--no-first-run",
+        "--no-default-browser-check",
+        "--disable-extensions",
+        "--lang=ko-KR",
+        "--new-window",
+      ];
+
+      this.log(`[INFO] Launching browser: ${browserPath}`);
+      const child = spawn(browserPath, args, {
+        stdio: "ignore",
+        detached: true,
+      });
+      child.unref();
+    } catch (error) {
+      const errMessage = error instanceof Error ? error.message : String(error);
+      this.log(`[CRITICAL ERROR] Failed to launch browser: ${errMessage}`);
+      throw error;
+    }
   }
 
   private async findCards(
@@ -268,7 +321,7 @@ export class AutomationEngine {
       const l = page.locator(sel);
       const c = await l.count().catch(() => 0);
       if (c > 0) {
-        this.log(`  Карточки: "${sel}" (${c})`);
+        this.log(`  Cards: "${sel}" (${c})`);
         return { loc: l, count: c };
       }
     }
@@ -330,11 +383,11 @@ export class AutomationEngine {
     if (!filters?.length) return;
     await Humanizer.wait(1500, 2500);
 
-    // 1. Раскрываем все скрытые группы фильтров (нажимаем все кнопки "더보기" / "Больше")
+    // 1. Expand all hidden filter groups (click every "더보기" / "More" button).
     await this.expandAllFilters(page);
 
-    // 2. Определяем контейнер, где находятся все фильтры, чтобы не кликать по всей странице
-    // На Coupang фильтры обычно лежат внутри формы #searchOptionForm или блока .search-filters
+    // 2. Locate the filter panel so we do not click the whole page.
+    // On Coupang, filters typically live in #searchOptionForm or .search-filters.
     const filterPanel = page
       .locator("#searchOptionForm, .search-filter-options, .search-filters")
       .first();
@@ -343,8 +396,8 @@ export class AutomationEngine {
       let clicked = false;
       const filterLower = f.toLowerCase();
 
-      // ШАГ 1: Проверка хардкодных/системных фильтров (Доставка, Наличие)
-      // Эти фильтры часто реализованы иконками или сложной версткой, поэтому для них оставляем точные локаторы
+      // STEP 1: Check hardcoded/system filters (Delivery, Availability).
+      // These are often icon-based or complex, so we use explicit locators.
       if (
         filterLower.includes("품절") ||
         filterLower.includes("out of stock")
@@ -395,9 +448,9 @@ export class AutomationEngine {
         }
       }
 
-      // ШАГ 2: Динамический/Семантический поиск (Размеры, Бренды, Цвета, Материалы, Звезды)
+      // STEP 2: Dynamic/semantic search (sizes, brands, colors, materials, ratings).
       if (!clicked) {
-        // Если у нас нет панели фильтров (изменился дизайн), ищем по всей странице, иначе - внутри панели
+        // If the filter panel is missing (layout changed), search the whole page.
         const panelVisible = await this.safeExecute(
           filterPanel.isVisible(),
           "checking filter panel visibility",
@@ -405,8 +458,7 @@ export class AutomationEngine {
         );
         const searchRoot = panelVisible ? filterPanel : page;
 
-        // Используем мощный инструмент Playwright - поиск элементов по тексту (getByText)
-        // Ищем теги label, a, span или button, которые содержат введенный пользователем текст
+        // Use text-based locators to find elements that include the user-provided text.
         const textLocators = [
           searchRoot.locator(`label:has-text("${f}")`),
           searchRoot.locator(`a:has-text("${f}")`),
@@ -415,7 +467,7 @@ export class AutomationEngine {
         ];
 
         for (const loc of textLocators) {
-          // Берем первый найденный видимый элемент
+          // Take the first visible match.
           const el = loc.first();
           const isVisible = await this.safeExecute(
             el.isVisible({ timeout: 1000 }),
@@ -427,8 +479,8 @@ export class AutomationEngine {
             try {
               await el.click();
               clicked = true;
-              this.log(`  [SUCCESS] Найден и применен фильтр: "${f}"`);
-              break; // Выходим из цикла поиска локаторов
+              this.log(`  [SUCCESS] Filter found and applied: "${f}"`);
+              break; // Exit the locator loop
             } catch (error) {
               const errMessage =
                 error instanceof Error ? error.message : String(error);
@@ -440,13 +492,13 @@ export class AutomationEngine {
         }
       }
 
-      // Ожидание перезагрузки списка товаров после клика
+      // Wait for the product list to reload after a click.
       if (clicked) {
         await page.waitForLoadState("domcontentloaded", { timeout: 15000 });
         await Humanizer.wait(1500, 2500);
       } else {
         this.log(
-          `  [WARNING] Не удалось найти фильтр: "${f}". Возможно, он отсутствует в этой категории.`,
+          `  [WARNING] Filter not found: "${f}". It may be missing in this category.`,
         );
       }
     }
@@ -477,14 +529,14 @@ export class AutomationEngine {
             await all.nth(i).click();
             await page.waitForLoadState("domcontentloaded", { timeout: 15000 });
             await Humanizer.wait(1500, 2500);
-            this.log(`  [SUCCESS] Цена: "${norm(txt)}"`);
+            this.log(`  [SUCCESS] Price: "${norm(txt)}"`);
             clicked = true;
             break;
           }
         }
-        if (!clicked) this.log(`  [WARNING] Цена не найдена: "${ct}"`);
+        if (!clicked) this.log(`  [WARNING] Price not found: "${ct}"`);
       } catch (e: any) {
-        this.log(`  [WARNING] Ошибка цены: ${e.message}`);
+        this.log(`  [WARNING] Price filter error: ${e.message}`);
       }
     }
     await page.evaluate(() => window.scrollTo({ top: 0, behavior: "smooth" }));
@@ -494,7 +546,7 @@ export class AutomationEngine {
   async run(): Promise<string | null> {
     await this.loadConfigs();
 
-    // Создаем папку screenshots в AppData, где у нас есть права на запись
+    // Create screenshots folder under user data where we have write access.
     const shots = path.join(this.userDataPath, "screenshots");
     try {
       await fs.access(shots);
@@ -502,23 +554,23 @@ export class AutomationEngine {
       await fs.mkdir(shots, { recursive: true });
     }
 
-    this.log(`Проверяю порт отладки ${this.debugPort}...`);
-    if (!(await isCDPReady(this.debugPort))) {
-      this.log("[INFO] Браузер закрыт. Запускаю автоматически...");
+    this.log(`[INFO] Checking debug port ${this.currentDebugPort}...`);
+    if (!(await isCDPReady(this.currentDebugPort))) {
+      this.log("[INFO] Browser is closed. Launching automatically...");
       await this.launchBrowser();
-      if (!(await waitForCDP(this.debugPort, 15000))) {
-        throw new Error(`Не удалось подключиться к браузеру.`);
+      if (!(await waitForCDP(this.currentDebugPort, 15000))) {
+        throw new Error("Failed to connect to the browser.");
       }
     }
 
-    this.log("Подключаюсь к браузеру...");
+    this.log("[INFO] Connecting to browser...");
     let browser: Browser;
     try {
       browser = await patchright.chromium.connectOverCDP(
-        `http://127.0.0.1:${this.debugPort}`,
+        `http://127.0.0.1:${this.currentDebugPort}`,
       );
     } catch (e: any) {
-      throw new Error(`Ошибка подключения: ${e.message}`);
+      throw new Error(`Connection error: ${e.message}`);
     }
 
     const contexts = browser.contexts();
@@ -546,12 +598,12 @@ export class AutomationEngine {
     }
 
     const title = await page.title();
-    this.log(`Страница: "${title}"`);
+    this.log(`Page: "${title}"`);
     if (title.includes("Access Denied") || title.includes("Robot")) {
       await browser.close();
-      throw new Error("Браузер заблокирован сайтом (Access Denied).");
+      throw new Error("Browser blocked by site (Access Denied).");
     }
-    this.log("[SUCCESS] Подключение успешно!\n");
+    this.log("[SUCCESS] Connection successful!\n");
 
     ctx.on("page", (p: Page) => {
       p.on("dialog", async (d: any) => d.accept());
@@ -565,7 +617,7 @@ export class AutomationEngine {
         const searchStartedAt = Date.now();
         let lastPageReached = 0;
         let cardsScanned = 0;
-        this.log(`\n=== ПОИСК: ${task.keyword} ===`);
+        this.log(`\n=== SEARCH: ${task.keyword} ===`);
 
         const inp = page.locator(this.selectors.search_bar).first();
         const inputVisible = await this.safeExecute(
@@ -592,7 +644,7 @@ export class AutomationEngine {
         await Humanizer.wait(2000, 4000);
 
         if ((await page.title()).includes("Access Denied")) {
-          this.log("[ERROR] Блок.");
+          this.log("[ERROR] Blocked by site.");
           break;
         }
 
@@ -604,14 +656,14 @@ export class AutomationEngine {
 
         for (let p = 1; p <= maxP; p++) {
           lastPageReached = p;
-          this.log(`  Страница ${p}...`);
+          this.log(`  Page ${p}...`);
           await page.evaluate(() => window.scrollBy(0, 400));
           await Humanizer.wait(1200, 2500);
           await Humanizer.randomMove(page);
 
           const { loc: cards, count } = await this.findCards(page);
           if (!cards || count === 0) {
-            this.log("  Карточки не найдены.");
+            this.log("  No product cards found.");
             break;
           }
 
@@ -625,7 +677,7 @@ export class AutomationEngine {
               .slice(0, 4)
               .join(" ");
             if (name.toLowerCase().includes(target.toLowerCase())) {
-              this.log(`  [SUCCESS] Найден: "${name}"`);
+              this.log(`  [SUCCESS] Found: "${name}"`);
               await Humanizer.move(page, cards.nth(i));
               await Humanizer.wait(400, 800);
 
@@ -636,7 +688,7 @@ export class AutomationEngine {
               await np.waitForLoadState("load", { timeout: 30000 });
               await Humanizer.wait(1500, 2500);
 
-              this.log("  Читаю страницу товара..."); // Ранее это было внутри utils.ts
+              this.log("  Reading product page..."); // Previously in utils.ts
               await Humanizer.simulateReading(np);
 
               let cartOk = false;
@@ -656,7 +708,7 @@ export class AutomationEngine {
                   await Humanizer.wait(400, 900);
                   try {
                     await btn.click();
-                    this.log("  [SUCCESS] Добавлено в корзину.");
+                    this.log("  [SUCCESS] Added to cart.");
                     cartOk = true;
                     break;
                   } catch (error) {
@@ -715,7 +767,7 @@ export class AutomationEngine {
 
         if (!found) {
           this.log(
-            `  [ERROR] Не найден: "${task.target_name.slice(0, 35)}..."`,
+            `  [ERROR] Not found: "${task.target_name.slice(0, 35)}..."`,
           );
           const searchTimeMs = Date.now() - searchStartedAt;
           await this.reportNotFound(
@@ -731,7 +783,7 @@ export class AutomationEngine {
         await Humanizer.wait(pause * 1000, pause * 1000 + 4000);
       }
 
-      this.log("\n--- Корзина ---");
+      this.log("\n--- Cart ---");
       await page.goto("https://cart.coupang.com/cartView.pang", {
         waitUntil: "load",
         timeout: 30000,
@@ -752,7 +804,7 @@ export class AutomationEngine {
       for (const sel of cartContainerSelectors) {
         const container = page.locator(sel).first();
         if (await container.isVisible({ timeout: 5000 }).catch(() => false)) {
-          this.log(`  Снимаю область товаров...`);
+          this.log("  Capturing cart items area...");
           await container.screenshot({ path: screenshotPath });
           shotDone = true;
           break;
@@ -761,15 +813,15 @@ export class AutomationEngine {
 
       if (!shotDone) {
         this.log(
-          "  [WARNING] Контейнер корзины не найден. Делаю обычный скриншот.",
+          "  [WARNING] Cart container not found. Taking a regular screenshot.",
         );
         await page.screenshot({ path: screenshotPath, fullPage: false });
       }
 
-      this.log(`[SUCCESS] Скриншот сохранен: ${file}`);
-      return screenshotPath; // Возвращаем путь к файлу для кнопки открытия
+      this.log(`[SUCCESS] Screenshot saved: ${file}`);
+      return screenshotPath; // Return the file path for the UI open button
     } catch (e: any) {
-      this.log(`[ERROR] Ошибка выполнения: ${e.message}`);
+      this.log(`[ERROR] Execution error: ${e.message}`);
       return null;
     } finally {
       await browser.close();
