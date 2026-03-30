@@ -4,7 +4,6 @@ import * as fs from "fs";
 import { autoUpdater } from "electron-updater";
 import { AutomationEngine } from "./engine";
 
-// Получаем системную папку для хранения изменяемых данных (в Windows это AppData/Roaming/Coupang Bot)
 const USER_DATA_PATH = app.getPath("userData");
 let autoUpdaterInitialized = false;
 let updateRetryTimer: NodeJS.Timeout | null = null;
@@ -12,17 +11,14 @@ let updateRetryAttempt = 0;
 const UPDATE_RETRY_BASE_MS = 15000;
 const UPDATE_RETRY_MAX_MS = 300000;
 
-// Обработчик получения версии приложения
 ipcMain.handle("get-version", () => {
   return app.getVersion();
 });
 
-// Функция для безопасного копирования базовых конфигов при первом запуске
 function setupUserFiles() {
   const configDest = path.join(USER_DATA_PATH, "config.json");
   const selectorsDest = path.join(USER_DATA_PATH, "selectors.json");
 
-  // Исходные файлы внутри защищенного архива программы
   const configSrc = path.join(__dirname, "../config/config.json");
   const selectorsSrc = path.join(__dirname, "../config/selectors.json");
 
@@ -60,7 +56,6 @@ function setupUserFiles() {
     }
   }
 
-  // Селекторы копируем ВСЕГДА (принудительно обновляем базу локаторов)
   if (fs.existsSync(selectorsSrc)) {
     fs.copyFileSync(selectorsSrc, selectorsDest);
   }
@@ -86,7 +81,6 @@ function createWindow() {
   });
 }
 
-// Функция для управления процессом обновления
 function setupAutoUpdater(win: BrowserWindow) {
   if (autoUpdaterInitialized) return;
   autoUpdaterInitialized = true;
@@ -164,7 +158,6 @@ function setupAutoUpdater(win: BrowserWindow) {
   autoUpdater.on("update-available", () => {
     updateRetryAttempt = 0;
     clearUpdateError();
-    // Отправляем текст статуса на главный экран
     sendStatus("Найдено обновление. Загрузка в фоне...");
     sendLog("[СИСТЕМА] Найдено обновление. Начинаю загрузку...");
   });
@@ -178,7 +171,6 @@ function setupAutoUpdater(win: BrowserWindow) {
   autoUpdater.on("download-progress", (progressObj) => {
     const percent = Math.max(0, Math.min(100, Math.round(progressObj.percent)));
     sendProgress(percent);
-    // Показываем проценты на главном экране
     sendStatus(`Скачивание обновления: ${percent}%`);
   });
 
@@ -216,7 +208,6 @@ app.on("window-all-closed", () => {
 
 ipcMain.on("start-bot", async (event, tasksArray) => {
   try {
-    // Теперь мы читаем и пишем в разрешенную папку AppData
     const configPath = path.join(USER_DATA_PATH, "config.json");
 
     const rawConfig = fs.readFileSync(configPath, "utf-8");
@@ -225,7 +216,6 @@ ipcMain.on("start-bot", async (event, tasksArray) => {
     config.tasks = tasksArray;
     fs.writeFileSync(configPath, JSON.stringify(config, null, 2));
 
-    // Передаем путь к AppData внутрь движка, чтобы он знал, куда сохранять скриншоты
     const engine = new AutomationEngine(USER_DATA_PATH);
 
     engine.onLog = (msg) => event.reply("bot-log", msg);
@@ -240,4 +230,28 @@ ipcMain.on("start-bot", async (event, tasksArray) => {
 
 ipcMain.on("open-path", (event, p) => {
   if (p) shell.showItemInFolder(p);
+});
+
+/**
+ * Обработчик очистки профиля браузера (выход из сессии).
+ *
+ * Удаляет папку chrome_debug_profile целиком, что сбрасывает все куки,
+ * кэш и сохранённые данные входа. Отвечает объектом { success, error }.
+ */
+ipcMain.handle("clear-profile", async () => {
+  const profileDir = path.join(USER_DATA_PATH, "chrome_debug_profile");
+
+  // Проверяем существование папки перед удалением
+  if (!fs.existsSync(profileDir)) {
+    return { success: true, alreadyClean: true };
+  }
+
+  try {
+    // recursive: true — удаляет всё дерево каталогов, force: true — игнорирует ошибки отсутствия файлов
+    fs.rmSync(profileDir, { recursive: true, force: true });
+    return { success: true };
+  } catch (error: any) {
+    console.error("[clear-profile] Ошибка удаления профиля:", error);
+    return { success: false, error: error.message };
+  }
 });

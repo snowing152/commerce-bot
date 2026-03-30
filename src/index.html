@@ -84,6 +84,18 @@
       button.success:hover {
         background: #2ecc71;
       }
+      /* Кнопка «Очистить данные» — красная, деструктивное действие */
+      button.danger {
+        background: #e74c3c;
+        margin-top: 10px;
+      }
+      button.danger:hover {
+        background: #c0392b;
+      }
+      button.danger:disabled {
+        background: #bdc3c7;
+        cursor: not-allowed;
+      }
 
       .task-block {
         background: #fdfdfd;
@@ -93,7 +105,6 @@
         margin-top: 15px;
       }
 
-      /* Окно логов */
       #logConsole {
         background: #1e1e1e;
         color: #d4d4d4;
@@ -109,12 +120,85 @@
         line-height: 1.4;
       }
 
-      /* Скрытие экранов */
       .view {
         display: none;
       }
       .view.active {
         display: block;
+      }
+
+      /* Всплывающее уведомление об очистке профиля */
+      #clearProfileToast {
+        display: none;
+        position: fixed;
+        bottom: 24px;
+        left: 50%;
+        transform: translateX(-50%);
+        padding: 12px 24px;
+        border-radius: 8px;
+        font-size: 14px;
+        font-weight: bold;
+        color: white;
+        z-index: 9999;
+        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+        transition: opacity 0.4s;
+      }
+      #clearProfileToast.ok {
+        background: #27ae60;
+      }
+      #clearProfileToast.err {
+        background: #e74c3c;
+      }
+
+      /* Changelog modal */
+      #changelogOverlay {
+        position: fixed;
+        inset: 0;
+        display: none;
+        align-items: center;
+        justify-content: center;
+        background: rgba(0, 0, 0, 0.45);
+        z-index: 10000;
+      }
+      #changelogModal {
+        width: min(520px, 90vw);
+        max-height: 80vh;
+        background: white;
+        border-radius: 12px;
+        box-shadow: 0 12px 30px rgba(0, 0, 0, 0.25);
+        display: flex;
+        flex-direction: column;
+        overflow: hidden;
+      }
+      #changelogHeader {
+        padding: 18px 20px 10px;
+        border-bottom: 1px solid #eee;
+      }
+      #changelogTitle {
+        margin: 0;
+        color: #2c3e50;
+      }
+      #changelogContent {
+        padding: 10px 20px 0;
+        overflow-y: auto;
+        flex: 1;
+      }
+      #changelogContent h3 {
+        color: #2980b9;
+        margin-bottom: 4px;
+      }
+      #changelogContent ul {
+        padding-left: 20px;
+      }
+      #changelogFooter {
+        display: flex;
+        justify-content: flex-end;
+        padding: 14px 20px 20px;
+        border-top: 1px solid #eee;
+      }
+      #btnCloseChangelog {
+        width: auto;
+        padding: 10px 18px;
       }
     </style>
   </head>
@@ -181,6 +265,12 @@
       <input type="number" id="productCount" min="1" max="10" value="1" />
       <button id="btnGenerate">Далее</button>
 
+      <!--
+        Кнопка «Очистить данные / Выйти»
+        Удаляет папку chrome_debug_profile, сбрасывая куки и сессию браузера.
+      -->
+      <button id="btnClearProfile" class="danger">🗑️ Очистить данные</button>
+
       <div
         style="
           text-align: center;
@@ -246,13 +336,34 @@
       </button>
     </div>
 
+    <!-- Всплывающее уведомление (toast) -->
+    <div id="clearProfileToast"></div>
+
+    <!-- Changelog modal -->
+    <div id="changelogOverlay" aria-hidden="true">
+      <div
+        id="changelogModal"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="changelogTitle"
+      >
+        <div id="changelogHeader">
+          <h2 id="changelogTitle">What's New</h2>
+        </div>
+        <div id="changelogContent"></div>
+        <div id="changelogFooter">
+          <button id="btnCloseChangelog" class="secondary">Close</button>
+        </div>
+      </div>
+    </div>
+
     <script>
-      // Получаем текущую версию при загрузке
+      // ─── Версия приложения ────────────────────────────────────────────────────
       window.api.getVersion().then((version) => {
         document.getElementById("appVersion").innerText = version;
       });
 
-      // Слушатель статуса обновлений для главного меню
+      // ─── Статус автообновления ────────────────────────────────────────────────
       window.api.onUpdateStatus((statusText) => {
         document.getElementById("updateStatusText").innerText = statusText;
         document.getElementById("updateStatusText").style.color = "#e67e22";
@@ -271,7 +382,7 @@
         box.style.display = "block";
       });
 
-      // Навигация по экранам
+      // ─── Вспомогательные функции ──────────────────────────────────────────────
       function switchView(viewId) {
         document
           .querySelectorAll(".view")
@@ -279,9 +390,117 @@
         document.getElementById(viewId).classList.add("active");
       }
 
+      /**
+       * Показывает всплывающее уведомление (toast) на 3 секунды.
+       * @param {string} msg  — текст сообщения
+       * @param {'ok'|'err'} type — цвет: зелёный (ok) или красный (err)
+       */
+      function showToast(msg, type) {
+        const toast = document.getElementById("clearProfileToast");
+        toast.textContent = msg;
+        toast.className = type; // применяем CSS-класс цвета
+        toast.style.display = "block";
+        toast.style.opacity = "1";
+        setTimeout(() => {
+          toast.style.opacity = "0";
+          setTimeout(() => {
+            toast.style.display = "none";
+          }, 400);
+        }, 3000);
+      }
+
+      const CHANGELOG_STORAGE_KEY = "changelog:lastShownVersion";
+      const GITHUB_OWNER = "snowing152";
+      const GITHUB_REPO = "commerce-bot";
+
+      async function fetchLatestRelease() {
+        try {
+          const response = await fetch(
+            `https://api.github.com/repos/${GITHUB_OWNER}/${GITHUB_REPO}/releases/latest`,
+            {
+              headers: { Accept: "application/vnd.github+json" },
+            },
+          );
+
+          if (!response.ok) return null;
+
+          const data = await response.json();
+          if (
+            !data ||
+            typeof data.tag_name !== "string" ||
+            typeof data.body !== "string"
+          ) {
+            return null;
+          }
+
+          return { tag_name: data.tag_name, body: data.body };
+        } catch (_) {
+          return null;
+        }
+      }
+
+      function normalizeVersion(version) {
+        if (!version) return "";
+        return String(version).trim().replace(/^v/i, "");
+      }
+
+      function isNewVersion(latest, current) {
+        return normalizeVersion(latest) !== normalizeVersion(current);
+      }
+
+      function getLastShownVersion() {
+        return localStorage.getItem(CHANGELOG_STORAGE_KEY);
+      }
+
+      function setLastShownVersion(version) {
+        localStorage.setItem(CHANGELOG_STORAGE_KEY, version);
+      }
+
+      function showChangelogModal(version, markdown) {
+        const overlay = document.getElementById("changelogOverlay");
+        const title = document.getElementById("changelogTitle");
+        const content = document.getElementById("changelogContent");
+
+        const cleanVersion = normalizeVersion(version);
+        const titleVersion = cleanVersion ? `v${cleanVersion}` : version;
+        title.textContent = `What's New in ${titleVersion}`;
+
+        const html = window.api.renderMarkdown
+          ? window.api.renderMarkdown(markdown || "")
+          : markdown || "";
+        content.innerHTML = html || "<p>No release notes provided.</p>";
+
+        overlay.style.display = "flex";
+        overlay.setAttribute("aria-hidden", "false");
+      }
+
+      function hideChangelogModal() {
+        const overlay = document.getElementById("changelogOverlay");
+        overlay.style.display = "none";
+        overlay.setAttribute("aria-hidden", "true");
+      }
+
+      async function maybeShowChangelog() {
+        const release = await fetchLatestRelease();
+        if (!release) return;
+
+        const currentVersion = await window.api.getVersion();
+        if (!currentVersion) return;
+
+        if (isNewVersion(release.tag_name, currentVersion)) {
+          return;
+        }
+
+        const lastShown = getLastShownVersion();
+        if (lastShown === currentVersion) return;
+
+        showChangelogModal(release.tag_name, release.body);
+        setLastShownVersion(currentVersion);
+      }
+
       let currentScreenshotPath = null;
 
-      // ЭКРАН 1 -> ЭКРАН 2
+      // ─── ЭКРАН 1 → ЭКРАН 2 ───────────────────────────────────────────────────
       document.getElementById("btnGenerate").addEventListener("click", () => {
         const count =
           parseInt(document.getElementById("productCount").value) || 1;
@@ -290,33 +509,33 @@
 
         for (let i = 1; i <= count; i++) {
           container.innerHTML += `
-                    <div class="task-block">
-                        <h3>Товар #${i}</h3>
-                        <label>Ключевое слово (keyword):</label>
-                        <p class="note">Для поиска самого товара (как вводите на Coupang).</p>
-                        <input type="text" id="keyword_${i}" placeholder="Например: 강아지 장난감">
+            <div class="task-block">
+              <h3>Товар #${i}</h3>
+              <label>Ключевое слово (keyword):</label>
+              <p class="note">Для поиска самого товара (как вводите на Coupang).</p>
+              <input type="text" id="keyword_${i}" placeholder="Например: 강아지 장난감">
 
-                        <label>Точное название (target_name):</label>
-                        <p class="note important-note">Должно быть точно таким же, каким оно отображается на карточке товара!</p>
-                        <input type="text" id="targetName_${i}" placeholder="Например: 그린홈 강아지 장난감 점프멜로디">
+              <label>Точное название (target_name):</label>
+              <p class="note important-note">Должно быть точно таким же, каким оно отображается на карточке товара!</p>
+              <input type="text" id="targetName_${i}" placeholder="Например: 그린홈 강아지 장난감 점프멜로디">
 
-                        <label>Фильтры (через запятую):</label>
-                        <p class="note">Укажите фильтры точно так же, как они написаны на сайте.</p>
-                        <input type="text" id="filters_${i}" placeholder="rocket, 공/볼">
-                    </div>
-                `;
+              <label>Фильтры (через запятую):</label>
+              <p class="note">Укажите фильтры точно так же, как они написаны на сайте.</p>
+              <input type="text" id="filters_${i}" placeholder="rocket, 공/볼">
+            </div>
+          `;
         }
         switchView("view-tasks");
       });
 
-      // ЭКРАН 2 -> ЭКРАН 1 (Кнопка Назад)
+      // ─── ЭКРАН 2 → ЭКРАН 1 ───────────────────────────────────────────────────
       document
         .getElementById("btnBackToSetup")
         .addEventListener("click", () => {
           switchView("view-setup");
         });
 
-      // ЭКРАН 2 -> ЭКРАН 3 (Запуск бота)
+      // ─── ЭКРАН 2 → ЭКРАН 3 (запуск) ──────────────────────────────────────────
       document.getElementById("btnStart").addEventListener("click", () => {
         const count =
           parseInt(document.getElementById("productCount").value) || 1;
@@ -345,14 +564,14 @@
         window.api.startBot(tasks);
       });
 
-      // Добавление логов в консоль
+      // ─── Логи в консоль ───────────────────────────────────────────────────────
       window.api.onLog((msg) => {
         const consoleEl = document.getElementById("logConsole");
         consoleEl.innerText += msg + "\n";
-        consoleEl.scrollTop = consoleEl.scrollHeight; // Автоскролл вниз
+        consoleEl.scrollTop = consoleEl.scrollHeight;
       });
 
-      // ЭКРАН 3 -> ЭКРАН 4 (Завершение)
+      // ─── ЭКРАН 3 → ЭКРАН 4 (завершение) ──────────────────────────────────────
       window.api.onDone((screenshotPath) => {
         currentScreenshotPath = screenshotPath;
         switchView("view-done");
@@ -371,7 +590,7 @@
         }
       });
 
-      // Кнопка открытия скриншота
+      // ─── Кнопка открытия скриншота ────────────────────────────────────────────
       document
         .getElementById("btnOpenScreenshot")
         .addEventListener("click", () => {
@@ -379,13 +598,13 @@
             window.api.openScreenshot(currentScreenshotPath);
         });
 
-      // Возврат в главное меню
+      // ─── Возврат в главное меню ───────────────────────────────────────────────
       document.getElementById("btnMainMenu").addEventListener("click", () => {
         document.getElementById("productCount").value = 1;
         switchView("view-setup");
       });
 
-      // Слушатель прогресса скачивания обновления
+      // ─── Прогресс загрузки обновления ────────────────────────────────────────
       window.api.onUpdateProgress((percent) => {
         const setupSection = document.getElementById("updateSectionSetup");
         if (setupSection) {
@@ -397,6 +616,58 @@
         document.getElementById("updateProgress").value = percent;
         document.getElementById("updatePercent").innerText = percent;
       });
+
+      // ─── Changelog modal ───────────────────────────────────────────────────
+      document
+        .getElementById("btnCloseChangelog")
+        .addEventListener("click", hideChangelogModal);
+
+      document
+        .getElementById("changelogOverlay")
+        .addEventListener("click", (event) => {
+          if (event.target === event.currentTarget) hideChangelogModal();
+        });
+
+      document.addEventListener("keydown", (event) => {
+        if (event.key === "Escape") hideChangelogModal();
+      });
+
+      maybeShowChangelog();
+
+      // ─── Кнопка «Очистить данные ────────────────────────────────────
+      document
+        .getElementById("btnClearProfile")
+        .addEventListener("click", async () => {
+          // Подтверждение — защита от случайного нажатия
+          const confirmed = confirm("Удаление куки и данных сессии.");
+          if (!confirmed) return;
+
+          const btn = document.getElementById("btnClearProfile");
+          btn.disabled = true;
+          btn.textContent = "Удаление...";
+
+          try {
+            const result = await window.api.clearProfile();
+
+            if (result.success) {
+              if (result.alreadyClean) {
+                showToast("Профиль уже был пустым.", "ok");
+              } else {
+                showToast("✅ Данные сессии удалены.", "ok");
+              }
+            } else {
+              showToast(
+                `❌ Ошибка: ${result.error || "неизвестная ошибка"}`,
+                "err",
+              );
+            }
+          } catch (e) {
+            showToast(`❌ Ошибка связи: ${e.message}`, "err");
+          } finally {
+            btn.disabled = false;
+            btn.textContent = "🗑️ Очистить данные";
+          }
+        });
     </script>
   </body>
 </html>

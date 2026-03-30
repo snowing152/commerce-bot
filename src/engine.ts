@@ -2,7 +2,7 @@ import * as patchright from "patchright";
 import { Page, Locator, Browser, BrowserContext, chromium } from "patchright";
 import { promises as fs, existsSync } from "fs";
 import * as path from "path";
-import { spawn } from "child_process";
+import { spawn, ChildProcess } from "child_process";
 import * as os from "os";
 import { Humanizer, isCDPReady, waitForCDP } from "./utils";
 
@@ -12,9 +12,8 @@ export class AutomationEngine {
   private config: any;
   private selectors: any;
 
-  // Удаляем это: private rootDir = path.join(__dirname, '..');
-  // ДОБАВЛЯЕМ ЭТО:
   private userDataPath: string;
+  private launchedBrowserProcess: ChildProcess | null = null;
 
   constructor(userDataPath: string) {
     this.userDataPath = userDataPath;
@@ -24,8 +23,67 @@ export class AutomationEngine {
 
   // Внутренняя функция логирования
   private log(msg: string) {
-    console.log(msg); // Оставляем для консоли на всякий случай
-    if (this.onLog) this.onLog(msg); // Отправляем в графический интерфейс
+    console.log(msg);
+    if (this.onLog) this.onLog(msg);
+  }
+
+  /**
+   * Универсальный механизм повторных попыток для критических действий.
+   *
+   * Параметры:
+   *  - fn: асинхронная функция, которую нужно выполнить (возвращает T | null)
+   *  - retries: максимальное количество дополнительных попыток (по умолчанию 2)
+   *  - label: описание действия для логов
+   *  - recovery: необязательная функция восстановления, вызываемая перед повтором
+   *
+   * Возвращает результат функции или null, если все попытки исчерпаны.
+   */
+  private async retryAction<T>(
+    fn: () => Promise<T | null>,
+    retries: number = 2,
+    label: string = "действие",
+    recovery?: () => Promise<void>,
+  ): Promise<T | null> {
+    for (let attempt = 1; attempt <= retries + 1; attempt++) {
+      try {
+        const result = await fn();
+        if (result !== null && result !== undefined) {
+          // Успех — возвращаем результат
+          if (attempt > 1) {
+            this.log(`  [RETRY] "${label}" успешно с попытки ${attempt}.`);
+          }
+          return result;
+        }
+      } catch (err: any) {
+        this.log(
+          `  [RETRY] Попытка ${attempt}/${retries + 1} для "${label}" — ошибка: ${err.message}`,
+        );
+      }
+
+      if (attempt <= retries) {
+        this.log(
+          `  [RETRY] Попытка ${attempt}/${retries + 1} для "${label}" не удалась. Восстановление...`,
+        );
+        if (recovery) {
+          try {
+            await recovery();
+          } catch (recoveryErr: any) {
+            this.log(`  [RETRY] Ошибка восстановления: ${recoveryErr.message}`);
+          }
+        }
+      }
+    }
+
+    this.log(`  [RETRY] "${label}" не выполнено после ${retries + 1} попыток.`);
+    return null;
+  }
+
+  private normalizeText(value: string): string {
+    return value
+      .replace(/^\s*product\s*image\s*/i, "")
+      .toLowerCase()
+      .replace(/[^\p{L}\p{N}]+/gu, " ")
+      .trim();
   }
 
   private async writeNotFoundFallback(record: any, reason: string) {
@@ -213,8 +271,11 @@ export class AutomationEngine {
     ];
 
     this.log(`[INFO] Запуск браузера: ${browserPath}`);
-    const child = spawn(browserPath, args, { stdio: "ignore", detached: true });
-    child.unref();
+    this.launchedBrowserProcess = spawn(browserPath, args, {
+      stdio: "ignore",
+      detached: true,
+    });
+    this.launchedBrowserProcess.unref();
   }
 
   private async findCards(
@@ -273,21 +334,18 @@ export class AutomationEngine {
     if (!filters?.length) return;
     await Humanizer.wait(1500, 2500);
 
-    // 1. Раскрываем все скрытые группы фильтров (нажимаем все кнопки "더보기" / "Больше")
     await this.expandAllFilters(page);
 
-    // 2. Определяем контейнер, где находятся все фильтры, чтобы не кликать по всей странице
-    // На Coupang фильтры обычно лежат внутри формы #searchOptionForm или блока .search-filters
     const filterPanel = page
       .locator("#searchOptionForm, .search-filter-options, .search-filters")
       .first();
 
     for (const f of filters) {
+      const filterText = f.trim();
+      if (!filterText) continue;
       let clicked = false;
-      const filterLower = f.toLowerCase();
+      const filterLower = filterText.toLowerCase();
 
-      // ШАГ 1: Проверка хардкодных/системных фильтров (Доставка, Наличие)
-      // Эти фильтры часто реализованы иконками или сложной версткой, поэтому для них оставляем точные локаторы
       if (
         filterLower.includes("품절") ||
         filterLower.includes("out of stock")
@@ -312,42 +370,36 @@ export class AutomationEngine {
         }
       }
 
-      // ШАГ 2: Динамический/Семантический поиск (Размеры, Бренды, Цвета, Материалы, Звезды)
       if (!clicked) {
-        // Если у нас нет панели фильтров (изменился дизайн), ищем по всей странице, иначе - внутри панели
         const searchRoot = (await filterPanel.isVisible().catch(() => false))
           ? filterPanel
           : page;
 
-        // Используем мощный инструмент Playwright - поиск элементов по тексту (getByText)
-        // Ищем теги label, a, span или button, которые содержат введенный пользователем текст
         const textLocators = [
-          searchRoot.locator(`label:has-text("${f}")`),
-          searchRoot.locator(`a:has-text("${f}")`),
-          searchRoot.locator(`button:has-text("${f}")`),
-          searchRoot.locator(`span:has-text("${f}")`),
+          searchRoot.locator(`label:text-is("${filterText}")`),
+          searchRoot.locator(`a:text-is("${filterText}")`),
+          searchRoot.locator(`button:text-is("${filterText}")`),
+          searchRoot.locator(`span:text-is("${filterText}")`),
         ];
 
         for (const loc of textLocators) {
-          // Берем первый найденный видимый элемент
           const el = loc.first();
           if (await el.isVisible({ timeout: 1000 }).catch(() => false)) {
             await Humanizer.move(page, el);
             await el.click();
             clicked = true;
-            this.log(`  [SUCCESS] Найден и применен фильтр: "${f}"`);
-            break; // Выходим из цикла поиска локаторов
+            this.log(`  [SUCCESS] Найден и применен фильтр: "${filterText}"`);
+            break;
           }
         }
       }
 
-      // Ожидание перезагрузки списка товаров после клика
       if (clicked) {
         await page.waitForLoadState("domcontentloaded", { timeout: 15000 });
         await Humanizer.wait(1500, 2500);
       } else {
         this.log(
-          `  [WARNING] Не удалось найти фильтр: "${f}". Возможно, он отсутствует в этой категории.`,
+          `  [WARNING] Не удалось найти фильтр: "${filterText}". Возможно, он отсутствует в этой категории.`,
         );
       }
     }
@@ -392,10 +444,70 @@ export class AutomationEngine {
     await Humanizer.wait(800, 1500);
   }
 
+  /**
+   * Пытается добавить товар в корзину, используя retryAction.
+   *
+   * Шаги восстановления при неудаче:
+   *  1. Прокрутка страницы вниз (кнопка может быть вне поля зрения)
+   *  2. Ожидание повторного появления кнопки
+   *  3. Перезагрузка страницы при исчерпании попыток
+   */
+  private async addToCartWithRetry(np: Page): Promise<boolean> {
+    const cartSelectors = [
+      this.selectors.add_to_cart_btn,
+      "button.prod-cart-btn",
+    ];
+
+    // Попытка клика по кнопке «Добавить в корзину» с восстановлением
+    const result = await this.retryAction<boolean>(
+      async () => {
+        for (const sel of cartSelectors) {
+          const btn = np.locator(sel).first();
+          const visible = await btn
+            .isVisible({ timeout: 3000 })
+            .catch(() => false);
+          if (visible) {
+            await Humanizer.move(np, btn);
+            await Humanizer.wait(400, 900);
+            await btn.click();
+            this.log("  [SUCCESS] Добавлено в корзину.");
+            return true;
+          }
+        }
+        return null; // Кнопка не найдена — сигнал для повтора
+      },
+      2, // до 2 дополнительных попыток (итого 3)
+      "добавление в корзину",
+      async () => {
+        // Восстановление: прокрутка вниз + ожидание
+        this.log("  [RETRY] Прокручиваю страницу, ищу кнопку корзины...");
+        await np.evaluate(() =>
+          window.scrollBy({ top: 500, behavior: "smooth" }),
+        );
+        await Humanizer.wait(1500, 2500);
+
+        // Если кнопка всё ещё не появилась — пробуем перезагрузить страницу
+        const anyBtnVisible = await np
+          .locator(cartSelectors[0])
+          .first()
+          .isVisible({ timeout: 1000 })
+          .catch(() => false);
+
+        if (!anyBtnVisible) {
+          this.log("  [RETRY] Перезагружаю страницу товара...");
+          await np.reload({ waitUntil: "load", timeout: 30000 });
+          await Humanizer.wait(2000, 3500);
+          await Humanizer.simulateReading(np);
+        }
+      },
+    );
+
+    return result === true;
+  }
+
   async run(): Promise<string | null> {
     await this.loadConfigs();
 
-    // Создаем папку screenshots в AppData, где у нас есть права на запись
     const shots = path.join(this.userDataPath, "screenshots");
     try {
       await fs.access(shots);
@@ -515,12 +627,18 @@ export class AutomationEngine {
             cardsScanned += 1;
             const name = await this.getName(cards.nth(i));
             if (!name) continue;
-            const target = task.target_name
-              .trim()
+            const nameNorm = this.normalizeText(name);
+            const targetTokens = this.normalizeText(task.target_name)
               .split(" ")
-              .slice(0, 4)
-              .join(" ");
-            if (name.toLowerCase().includes(target.toLowerCase())) {
+              .filter(Boolean);
+            const targetShort = targetTokens.slice(0, 6).join(" ");
+            const tokensMatch = targetTokens
+              .slice(0, 6)
+              .every((token) => nameNorm.includes(token));
+            if (
+              (targetShort && nameNorm.includes(targetShort)) ||
+              tokensMatch
+            ) {
               this.log(`  [SUCCESS] Найден: "${name}"`);
               await Humanizer.move(page, cards.nth(i));
               await Humanizer.wait(400, 800);
@@ -532,25 +650,17 @@ export class AutomationEngine {
               await np.waitForLoadState("load", { timeout: 30000 });
               await Humanizer.wait(1500, 2500);
 
-              this.log("  Читаю страницу товара..."); // Ранее это было внутри utils.ts
+              this.log("  Читаю страницу товара...");
               await Humanizer.simulateReading(np);
 
-              let cartOk = false;
-              const cartSelectors = [
-                this.selectors.add_to_cart_btn,
-                "button.prod-cart-btn",
-              ];
-              for (const sel of cartSelectors) {
-                const btn = np.locator(sel).first();
-                if (await btn.isVisible({ timeout: 3000 }).catch(() => false)) {
-                  await Humanizer.move(np, btn);
-                  await Humanizer.wait(400, 900);
-                  await btn.click();
-                  this.log("  [SUCCESS] Добавлено в корзину.");
-                  cartOk = true;
-                  break;
-                }
+              // Используем новый метод с retry-механизмом вместо прямого вызова
+              const cartOk = await this.addToCartWithRetry(np);
+              if (!cartOk) {
+                this.log(
+                  "  [WARNING] Не удалось добавить в корзину после всех попыток.",
+                );
               }
+
               await Humanizer.wait(3000, 5000);
               await np.close();
               await page.bringToFront();
@@ -566,6 +676,8 @@ export class AutomationEngine {
             "a.btn-next",
             ".pagination-next",
             'a[aria-label="다음"]',
+            '.Pagination_pagination__eHDDy a[data-page="next"]',
+            ".Pagination_nextBtn__TUY5t",
           ];
           for (const sel of nextSelectors) {
             const next = page.locator(sel).first();
@@ -578,6 +690,22 @@ export class AutomationEngine {
               await Humanizer.wait(2500, 4500);
               nextOk = true;
               break;
+            }
+          }
+          if (!nextOk) {
+            const nextPage = page
+              .locator(`.Pagination_pagination__eHDDy a[data-page="${p + 1}"]`)
+              .first();
+            if (
+              await nextPage.isVisible({ timeout: 2000 }).catch(() => false)
+            ) {
+              await Humanizer.move(page, nextPage);
+              await nextPage.click();
+              await page.waitForLoadState("domcontentloaded", {
+                timeout: 30000,
+              });
+              await Humanizer.wait(2500, 4500);
+              nextOk = true;
             }
           }
           if (!nextOk) break;
@@ -637,12 +765,18 @@ export class AutomationEngine {
       }
 
       this.log(`[SUCCESS] Скриншот сохранен: ${file}`);
-      return screenshotPath; // Возвращаем путь к файлу для кнопки открытия
+      return screenshotPath;
     } catch (e: any) {
       this.log(`[ERROR] Ошибка выполнения: ${e.message}`);
       return null;
     } finally {
       await browser.close();
+      if (this.launchedBrowserProcess && this.launchedBrowserProcess.pid) {
+        try {
+          this.launchedBrowserProcess.kill();
+        } catch (_) {}
+      }
+      this.launchedBrowserProcess = null;
     }
   }
 }
