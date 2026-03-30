@@ -64,3 +64,42 @@ describe("Интеграционные тесты AutomationEngine", () => {
     expect((engine as any).config.tasks[0].keyword).toBe("тест");
   });
 });
+
+describe("AutomationEngine Error Handling", () => {
+  it("should capture rejected promises, log the context, and return the fallback value", async () => {
+    // 1. Initialize the engine with a dummy path
+    const engine = new AutomationEngine("/fake/user/data/path");
+
+    // 2. Create a mock function to intercept the internal logging mechanism
+    const logSpy = jest
+      .spyOn(engine as any, "log")
+      .mockImplementation(() => {});
+
+    // 3. Create a promise that simulates a Playwright timeout or detached DOM node
+    const failingAction = Promise.reject(
+      new Error("Playwright Timeout Exceeded"),
+    );
+
+    // 4. Call safeExecute. We cast to 'any' to test the private method directly.
+    // In strict TDD, you would test a public method that calls safeExecute,
+    // but testing the utility directly ensures the wrapper logic is sound.
+    const result = await (engine as any).safeExecute(
+      failingAction,
+      "testing DOM click",
+      false, // The expected fallback value
+    );
+
+    // 5. Verify the fallback value was returned safely to prevent application crashes
+    expect(result).toBe(false);
+
+    // 6. Verify the exact error string was generated and passed to the logger
+    expect(logSpy).toHaveBeenCalledWith(
+      expect.stringContaining(
+        "[ERROR] Failed during: testing DOM click. Reason: Playwright Timeout Exceeded",
+      ),
+    );
+
+    // Clean up the spy to prevent memory leaks in the test runner
+    logSpy.mockRestore();
+  });
+});
