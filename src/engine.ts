@@ -345,6 +345,18 @@ export class AutomationEngine {
     return "";
   }
 
+  private async isAdCard(card: Locator): Promise<boolean> {
+    try {
+      const [adTextCount, adClassCount] = await Promise.all([
+        card.locator('span:has-text("AD")').count(),
+        card.locator('[class*="AdMark"]').count(),
+      ]);
+      return adTextCount > 0 || adClassCount > 0;
+    } catch (_) {
+      return false;
+    }
+  }
+
   private async expandAllFilters(page: Page) {
     const moreBtns = page.locator(
       'button:has-text("더보기"), .search-filter-options-more, .btn-more-filter',
@@ -667,9 +679,22 @@ export class AutomationEngine {
             break;
           }
 
-          for (let i = 0; i < count; i++) {
+          const adMarker = page.locator(
+            'span:has-text("AD"), [class*="AdMark"]',
+          );
+          const nonAdCards = cards.filter({ hasNot: adMarker });
+          const nonAdCount = await nonAdCards.count().catch(() => 0);
+          if (nonAdCount === 0) {
+            this.log("  No non-ad product cards found.");
+            break;
+          }
+          for (let i = 0; i < nonAdCount; i++) {
+            const card = nonAdCards.nth(i);
+            if (await this.isAdCard(card)) {
+              continue;
+            }
             cardsScanned += 1;
-            const name = await this.getName(cards.nth(i));
+            const name = await this.getName(card);
             if (!name) continue;
             const target = task.target_name
               .trim()
@@ -678,12 +703,12 @@ export class AutomationEngine {
               .join(" ");
             if (name.toLowerCase().includes(target.toLowerCase())) {
               this.log(`  [SUCCESS] Found: "${name}"`);
-              await Humanizer.move(page, cards.nth(i));
+              await Humanizer.move(page, card);
               await Humanizer.wait(400, 800);
 
               const [np] = await Promise.all([
                 ctx.waitForEvent("page"),
-                cards.nth(i).locator("a").first().click(),
+                card.locator("a").first().click(),
               ]);
               await np.waitForLoadState("load", { timeout: 30000 });
               await Humanizer.wait(1500, 2500);
