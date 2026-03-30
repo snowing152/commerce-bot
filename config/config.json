@@ -9,8 +9,8 @@
     "supabase_allow_service_role": false
   },
   "telegram": {
-    "bot_token": "8690619442:AAFKx8K8LcQvIY7Yr3p8oamHbRNia0MY744",
-    "chat_id": "168406130"
+    "bot_token": "ВАШ_ТОКЕН_ОТ_BOTFATHER",
+    "chat_id": "ВАШ_CHAT_ID"
   },
   "tasks": [
     {
