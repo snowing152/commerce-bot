@@ -28,6 +28,27 @@ export class AutomationEngine {
     if (this.onLog) this.onLog(msg); // Отправляем в графический интерфейс
   }
 
+  /**
+   * Safely executes a Promise, logging any errors with context instead of failing silently.
+   * @param action The Promise to execute.
+   * @param context A description of the operation for logging purposes.
+   * @param fallback The value to return if the action throws an error.
+   */
+  private async safeExecute<T>(
+    action: Promise<T>,
+    context: string,
+    fallback: T,
+  ): Promise<T> {
+    try {
+      return await action;
+    } catch (error) {
+      // Extract the message safely whether the error is an Error object or a string
+      const errMessage = error instanceof Error ? error.message : String(error);
+      this.log(`[ERROR] Failed during: ${context}. Reason: ${errMessage}`);
+      return fallback;
+    }
+  }
+
   private async writeNotFoundFallback(record: any, reason: string) {
     const filePath = path.join(this.userDataPath, "not_found.jsonl");
     const payload = { ...record, reason };
@@ -47,7 +68,10 @@ export class AutomationEngine {
         Buffer.from(parts[1], "base64").toString("utf-8"),
       );
       return payload?.role || null;
-    } catch (_) {
+    } catch (error) {
+      const errMessage = error instanceof Error ? error.message : String(error);
+      // Explicitly notify that the provided token was invalid
+      this.log(`[ERROR] Failed to parse Supabase JWT payload: ${errMessage}`);
       return null;
     }
   }
@@ -186,7 +210,7 @@ export class AutomationEngine {
     return "";
   }
 
-  private launchBrowser() {
+  private async launchBrowser() {
     const browserPath = process.env.CHROME_PATH || this.findBrowserPath();
     if (!browserPath) {
       throw new Error(
@@ -195,8 +219,18 @@ export class AutomationEngine {
     }
 
     const profileDir = path.join(this.userDataPath, "chrome_debug_profile");
-    if (!existsSync(profileDir))
-      fs.mkdir(profileDir, { recursive: true }).catch(() => {});
+    if (!existsSync(profileDir)) {
+      try {
+        await fs.mkdir(profileDir, { recursive: true });
+      } catch (error) {
+        const errMessage =
+          error instanceof Error ? error.message : String(error);
+        // We must explicitly log system-level write errors
+        this.log(
+          `[ERROR] Failed to create user profile directory at ${profileDir}: ${errMessage}`,
+        );
+      }
+    }
 
     const args = [
       `--remote-debugging-port=${DEBUG_PORT}`,
@@ -255,18 +289,37 @@ export class AutomationEngine {
   }
 
   private async expandAllFilters(page: Page) {
-    try {
-      const moreBtns = page.locator(
-        'button:has-text("더보기"), .search-filter-options-more, .btn-more-filter',
+    const moreBtns = page.locator(
+      'button:has-text("더보기"), .search-filter-options-more, .btn-more-filter',
+    );
+    // Using safeExecute to prevent silent count failures
+    const count = await this.safeExecute(
+      moreBtns.count(),
+      "counting 'more' buttons",
+      0,
+    );
+
+    for (let i = 0; i < count; i++) {
+      const isVisible = await this.safeExecute(
+        moreBtns.nth(i).isVisible({ timeout: 500 }),
+        `checking visibility of 'more' button ${i}`,
+        false,
       );
-      const count = await moreBtns.count().catch(() => 0);
-      for (let i = 0; i < count; i++) {
-        if (await moreBtns.nth(i).isVisible({ timeout: 500 })) {
+
+      if (isVisible) {
+        // Wrap the click action in a try/catch so one failure does not break the entire loop
+        try {
           await moreBtns.nth(i).click();
           await Humanizer.wait(300, 600);
+        } catch (error) {
+          const errMessage =
+            error instanceof Error ? error.message : String(error);
+          this.log(
+            `[WARNING] Could not click 'more' button ${i}: ${errMessage}`,
+          );
         }
       }
-    } catch (_) {}
+    }
   }
 
   private async applyFilters(page: Page, filters: string[]) {
@@ -297,27 +350,56 @@ export class AutomationEngine {
             "label.search-filter-exclude-out-of-stock, input#outOfStockProduct + label",
           )
           .first();
-        if (await el.isVisible({ timeout: 1500 }).catch(() => false)) {
-          await el.click();
-          clicked = true;
+        const isVisible = await this.safeExecute(
+          el.isVisible({ timeout: 1500 }),
+          "checking filter visibility (out of stock)",
+          false,
+        );
+        if (isVisible) {
+          try {
+            await el.click();
+            clicked = true;
+          } catch (error) {
+            const errMessage =
+              error instanceof Error ? error.message : String(error);
+            this.log(
+              `[ERROR] Failed to click filter element (out of stock): ${errMessage}`,
+            );
+          }
         }
       } else if (
         filterLower.includes("rocket") ||
         filterLower.includes("로켓")
       ) {
         const el = page.locator('label[data-component-name*="rocket"]').first();
-        if (await el.isVisible({ timeout: 1500 }).catch(() => false)) {
-          await el.click();
-          clicked = true;
+        const isVisible = await this.safeExecute(
+          el.isVisible({ timeout: 1500 }),
+          "checking filter visibility (rocket)",
+          false,
+        );
+        if (isVisible) {
+          try {
+            await el.click();
+            clicked = true;
+          } catch (error) {
+            const errMessage =
+              error instanceof Error ? error.message : String(error);
+            this.log(
+              `[ERROR] Failed to click filter element (rocket): ${errMessage}`,
+            );
+          }
         }
       }
 
       // ШАГ 2: Динамический/Семантический поиск (Размеры, Бренды, Цвета, Материалы, Звезды)
       if (!clicked) {
         // Если у нас нет панели фильтров (изменился дизайн), ищем по всей странице, иначе - внутри панели
-        const searchRoot = (await filterPanel.isVisible().catch(() => false))
-          ? filterPanel
-          : page;
+        const panelVisible = await this.safeExecute(
+          filterPanel.isVisible(),
+          "checking filter panel visibility",
+          false,
+        );
+        const searchRoot = panelVisible ? filterPanel : page;
 
         // Используем мощный инструмент Playwright - поиск элементов по тексту (getByText)
         // Ищем теги label, a, span или button, которые содержат введенный пользователем текст
@@ -331,12 +413,25 @@ export class AutomationEngine {
         for (const loc of textLocators) {
           // Берем первый найденный видимый элемент
           const el = loc.first();
-          if (await el.isVisible({ timeout: 1000 }).catch(() => false)) {
+          const isVisible = await this.safeExecute(
+            el.isVisible({ timeout: 1000 }),
+            `checking filter visibility for "${f}"`,
+            false,
+          );
+          if (isVisible) {
             await Humanizer.move(page, el);
-            await el.click();
-            clicked = true;
-            this.log(`  [SUCCESS] Найден и применен фильтр: "${f}"`);
-            break; // Выходим из цикла поиска локаторов
+            try {
+              await el.click();
+              clicked = true;
+              this.log(`  [SUCCESS] Найден и применен фильтр: "${f}"`);
+              break; // Выходим из цикла поиска локаторов
+            } catch (error) {
+              const errMessage =
+                error instanceof Error ? error.message : String(error);
+              this.log(
+                `  [ERROR] Failed to click filter element: ${errMessage}`,
+              );
+            }
           }
         }
       }
@@ -406,7 +501,7 @@ export class AutomationEngine {
     this.log(`Проверяю порт отладки ${DEBUG_PORT}...`);
     if (!(await isCDPReady(DEBUG_PORT))) {
       this.log("[INFO] Браузер закрыт. Запускаю автоматически...");
-      this.launchBrowser();
+      await this.launchBrowser();
       if (!(await waitForCDP(DEBUG_PORT, 15000))) {
         throw new Error(`Не удалось подключиться к браузеру.`);
       }
@@ -469,7 +564,12 @@ export class AutomationEngine {
         this.log(`\n=== ПОИСК: ${task.keyword} ===`);
 
         const inp = page.locator(this.selectors.search_bar).first();
-        if (!(await inp.isVisible({ timeout: 3000 }).catch(() => false))) {
+        const inputVisible = await this.safeExecute(
+          inp.isVisible({ timeout: 3000 }),
+          "checking search input visibility",
+          false,
+        );
+        if (!inputVisible) {
           await page.goto(this.config.settings.base_url, {
             waitUntil: "load",
             timeout: 60000,
@@ -542,13 +642,26 @@ export class AutomationEngine {
               ];
               for (const sel of cartSelectors) {
                 const btn = np.locator(sel).first();
-                if (await btn.isVisible({ timeout: 3000 }).catch(() => false)) {
+                const isVisible = await this.safeExecute(
+                  btn.isVisible({ timeout: 3000 }),
+                  "checking add-to-cart button visibility",
+                  false,
+                );
+                if (isVisible) {
                   await Humanizer.move(np, btn);
                   await Humanizer.wait(400, 900);
-                  await btn.click();
-                  this.log("  [SUCCESS] Добавлено в корзину.");
-                  cartOk = true;
-                  break;
+                  try {
+                    await btn.click();
+                    this.log("  [SUCCESS] Добавлено в корзину.");
+                    cartOk = true;
+                    break;
+                  } catch (error) {
+                    const errMessage =
+                      error instanceof Error ? error.message : String(error);
+                    this.log(
+                      `  [ERROR] Failed to click add-to-cart button: ${errMessage}`,
+                    );
+                  }
                 }
               }
               await Humanizer.wait(3000, 5000);
@@ -569,15 +682,28 @@ export class AutomationEngine {
           ];
           for (const sel of nextSelectors) {
             const next = page.locator(sel).first();
-            if (await next.isVisible({ timeout: 2000 }).catch(() => false)) {
+            const isVisible = await this.safeExecute(
+              next.isVisible({ timeout: 2000 }),
+              "checking pagination next button visibility",
+              false,
+            );
+            if (isVisible) {
               await Humanizer.move(page, next);
-              await next.click();
-              await page.waitForLoadState("domcontentloaded", {
-                timeout: 30000,
-              });
-              await Humanizer.wait(2500, 4500);
-              nextOk = true;
-              break;
+              try {
+                await next.click();
+                await page.waitForLoadState("domcontentloaded", {
+                  timeout: 30000,
+                });
+                await Humanizer.wait(2500, 4500);
+                nextOk = true;
+                break;
+              } catch (error) {
+                const errMessage =
+                  error instanceof Error ? error.message : String(error);
+                this.log(
+                  `  [ERROR] Failed to click pagination next: ${errMessage}`,
+                );
+              }
             }
           }
           if (!nextOk) break;
