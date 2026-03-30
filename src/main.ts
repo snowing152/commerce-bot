@@ -229,6 +229,9 @@ ipcMain.on("start-bot", async (event, tasksArray) => {
     const engine = new AutomationEngine(USER_DATA_PATH);
 
     engine.onLog = (msg) => event.reply("bot-log", msg);
+    engine.onResult = (data) => {
+      if (!event.sender.isDestroyed()) event.reply("bot-result", data);
+    };
 
     const screenshotPath = await engine.run();
     event.reply("bot-done", screenshotPath);

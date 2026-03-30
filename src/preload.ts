@@ -6,6 +6,8 @@ contextBridge.exposeInMainWorld("api", {
     ipcRenderer.on("bot-log", (_event, msg) => callback(msg)),
   onDone: (callback: (path: string | null) => void) =>
     ipcRenderer.on("bot-done", (_event, path) => callback(path)),
+  onBotResult: (callback: (data: any) => void) =>
+    ipcRenderer.on("bot-result", (_event, data) => callback(data)),
   openScreenshot: (path: string) => ipcRenderer.send("open-path", path),
   onUpdateProgress: (callback: (percent: number) => void) =>
     ipcRenderer.on("update-progress", (_event, p) => callback(p)),

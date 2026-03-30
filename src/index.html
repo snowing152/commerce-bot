@@ -109,6 +109,33 @@
         line-height: 1.4;
       }
 
+      .results-container {
+        margin-top: 16px;
+        background: #ffffff;
+        border: 1px solid #e0e0e0;
+        border-radius: 6px;
+        padding: 12px;
+      }
+
+      .results-table {
+        width: 100%;
+        border-collapse: collapse;
+        font-size: 12px;
+      }
+
+      .results-table th,
+      .results-table td {
+        border: 1px solid #e0e0e0;
+        padding: 6px 8px;
+        text-align: left;
+      }
+
+      .results-table th {
+        background: #f7f9fb;
+        color: #2c3e50;
+        font-weight: 600;
+      }
+
       /* Скрытие экранов */
       .view {
         display: none;
@@ -211,6 +238,22 @@
       </p>
       <div id="logConsole"></div>
 
+      <div class="results-container">
+        <h3>Результаты поиска</h3>
+        <table id="resultsTableRunning" class="results-table">
+          <thead>
+            <tr>
+              <th>ID</th>
+              <th>Дата</th>
+              <th>Ключевое слово</th>
+              <th>Точное название</th>
+              <th>Позиция</th>
+            </tr>
+          </thead>
+          <tbody class="results-body"></tbody>
+        </table>
+      </div>
+
       <div
         id="updateSection"
         style="
@@ -240,6 +283,22 @@
       <button id="btnOpenScreenshot" style="display: none">
         Показать скриншот в папке
       </button>
+
+      <div class="results-container">
+        <h3>Результаты поиска</h3>
+        <table id="resultsTableDone" class="results-table">
+          <thead>
+            <tr>
+              <th>ID</th>
+              <th>Дата</th>
+              <th>Ключевое слово</th>
+              <th>Точное название</th>
+              <th>Позиция</th>
+            </tr>
+          </thead>
+          <tbody class="results-body"></tbody>
+        </table>
+      </div>
 
       <button id="btnMainMenu" class="secondary">
         Вернуться в главное меню
@@ -280,6 +339,21 @@
       }
 
       let currentScreenshotPath = null;
+      let results = [];
+
+      function appendResultRow(data) {
+        document.querySelectorAll(".results-body").forEach((tableBody) => {
+          const row = document.createElement("tr");
+          row.innerHTML = `
+            <td>${data.id}</td>
+            <td>${data.date}</td>
+            <td>${data.keyword}</td>
+            <td>${data.targetName}</td>
+            <td>${data.location}</td>
+          `;
+          tableBody.appendChild(row);
+        });
+      }
 
       // ЭКРАН 1 -> ЭКРАН 2
       document.getElementById("btnGenerate").addEventListener("click", () => {
@@ -341,6 +415,10 @@
         }
 
         document.getElementById("logConsole").innerText = "Инициализация...\n";
+        results = [];
+        document.querySelectorAll(".results-body").forEach((tableBody) => {
+          tableBody.innerHTML = "";
+        });
         switchView("view-running");
         window.api.startBot(tasks);
       });
@@ -350,6 +428,12 @@
         const consoleEl = document.getElementById("logConsole");
         consoleEl.innerText += msg + "\n";
         consoleEl.scrollTop = consoleEl.scrollHeight; // Автоскролл вниз
+      });
+
+      // Реальные результаты в таблице
+      window.api.onBotResult((data) => {
+        results.push(data);
+        appendResultRow(data);
       });
 
       // ЭКРАН 3 -> ЭКРАН 4 (Завершение)

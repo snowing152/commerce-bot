@@ -72,29 +72,33 @@ export class Humanizer {
     }
   }
 
-  static async simulateReading(page: Page) {
-    console.log("  Reading product page...");
-    for (let i = 0; i < 5; i++) {
+  static async simulateReading(page: Page, minMs = 15000, maxMs = 20000) {
+    const targetMs = Math.floor(Math.random() * (maxMs - minMs + 1)) + minMs;
+    const startedAt = Date.now();
+    let expanded = false;
+
+    while (Date.now() - startedAt < targetMs) {
       // Smooth scrolling simulates a person reading the page.
       await page.evaluate(() =>
         window.scrollBy({ top: 350, behavior: "smooth" }),
       );
-      await this.wait(1500, 3000);
-      try {
-        const btn = page
-          .locator("button.expand, .product-detail-seemore-icon-wpui")
-          .first();
-        if (await btn.isVisible({ timeout: 800 })) {
-          await btn.click();
-          await this.wait(2000, 3000);
-          break;
-        }
-      } catch (_) {}
+      await this.wait(900, 1800);
+      if (!expanded) {
+        try {
+          const btn = page
+            .locator("button.expand, .product-detail-seemore-icon-wpui")
+            .first();
+          if (await btn.isVisible({ timeout: 600 })) {
+            await btn.click();
+            expanded = true;
+            await this.wait(1200, 1800);
+          }
+        } catch (_) {}
+      }
     }
     await page.evaluate(() =>
       window.scrollBy({ top: 800, behavior: "smooth" }),
     );
-    await this.wait(3000, 5000);
   }
 
   static date(): string {

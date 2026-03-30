@@ -2,7 +2,7 @@ import * as patchright from "patchright";
 import { Page, Locator, Browser, BrowserContext, chromium } from "patchright";
 import { promises as fs, existsSync } from "fs";
 import * as path from "path";
-import { spawn } from "child_process";
+import { spawn, ChildProcess } from "child_process";
 import * as os from "os";
 import { Humanizer, getFreePort, isCDPReady, waitForCDP } from "./utils";
 
@@ -36,11 +36,23 @@ export interface Selectors {
   cart_link?: string;
 }
 
+export interface BotResult {
+  id: number;
+  date: string;
+  keyword: string;
+  targetName: string;
+  location: string;
+}
+
+type LogLevel = "INFO" | "DEBUG" | "SKIP" | "ACTION" | "SUCCESS" | "ERROR";
+
 export class AutomationEngine {
   private config!: BotConfig;
   private selectors!: Selectors;
   // Store the active port so launch and connect use the same value
   private currentDebugPort = 9222;
+  private resultCounter = 0;
+  private browserProcess: ChildProcess | null = null;
 
   private userDataPath: string;
 
@@ -49,11 +61,31 @@ export class AutomationEngine {
   }
 
   public onLog?: (msg: string) => void;
+  public onResult?: (data: BotResult) => void;
 
   // Internal logging helper
   private log(msg: string) {
     console.log(msg); // Keep console output for local debugging
     if (this.onLog) this.onLog(msg); // Forward to the UI
+  }
+
+  private logStep(level: LogLevel, message: string, context?: string) {
+    const ctx = context ? `[${context}] ` : "";
+    this.log(`[${level}] ${ctx}${message}`);
+  }
+
+  private emitResult(task: Task, pageNumber: number, position: number) {
+    this.resultCounter += 1;
+    const dateStr = new Date().toLocaleDateString("en-GB").replace(/\//g, ".");
+    const location = `Page ${pageNumber} Position ${position}`;
+    const payload: BotResult = {
+      id: this.resultCounter,
+      date: dateStr,
+      keyword: task.keyword,
+      targetName: task.target_name,
+      location,
+    };
+    if (this.onResult) this.onResult(payload);
   }
 
   /**
@@ -72,7 +104,11 @@ export class AutomationEngine {
     } catch (error) {
       // Extract the message safely whether the error is an Error object or a string
       const errMessage = error instanceof Error ? error.message : String(error);
-      this.log(`[ERROR] Failed during: ${context}. Reason: ${errMessage}`);
+      this.logStep(
+        "ERROR",
+        `Failed during: ${context}. Reason: ${errMessage}`,
+        "safeExecute",
+      );
       return fallback;
     }
   }
@@ -82,9 +118,17 @@ export class AutomationEngine {
     const payload = { ...record, reason };
     try {
       await fs.appendFile(filePath, `${JSON.stringify(payload)}\n`);
-      this.log(`  [INFO] Not-found saved locally (${reason}).`);
+      this.logStep(
+        "INFO",
+        `Not-found saved locally (${reason}).`,
+        "writeNotFoundFallback",
+      );
     } catch (e: any) {
-      this.log(`  [WARNING] Failed to save not-found: ${e.message}`);
+      this.logStep(
+        "ERROR",
+        `Failed to save not-found: ${e.message}`,
+        "writeNotFoundFallback",
+      );
     }
   }
 
@@ -99,7 +143,11 @@ export class AutomationEngine {
     } catch (error) {
       const errMessage = error instanceof Error ? error.message : String(error);
       // Explicitly notify that the provided token was invalid
-      this.log(`[ERROR] Failed to parse Supabase JWT payload: ${errMessage}`);
+      this.logStep(
+        "ERROR",
+        `Failed to parse Supabase JWT payload: ${errMessage}`,
+        "getSupabaseKeyRole",
+      );
       return null;
     }
   }
@@ -118,8 +166,10 @@ export class AutomationEngine {
 
     const keyRole = this.getSupabaseKeyRole(supabaseKey);
     if (keyRole === "service_role" && !allowServiceRole) {
-      this.log(
-        "  [WARNING] Supabase service_role key is blocked. Use an anon key.",
+      this.logStep(
+        "ERROR",
+        "Supabase service_role key is blocked. Use an anon key.",
+        "saveNotFoundToSupabase",
       );
       await this.writeNotFoundFallback(record, "supabase_service_role_blocked");
       return;
@@ -147,14 +197,26 @@ export class AutomationEngine {
       if (!response.ok) {
         const errorText = await response.text().catch(() => "");
         await this.writeNotFoundFallback(record, `supabase_${response.status}`);
-        this.log(`  [WARNING] Supabase error: ${response.status} ${errorText}`);
+        this.logStep(
+          "ERROR",
+          `Supabase error: ${response.status} ${errorText}`,
+          "saveNotFoundToSupabase",
+        );
         return;
       }
 
-      this.log("  [SUCCESS] Not-found saved to Supabase.");
+      this.logStep(
+        "SUCCESS",
+        "Not-found saved to Supabase.",
+        "saveNotFoundToSupabase",
+      );
     } catch (e: any) {
       await this.writeNotFoundFallback(record, "supabase_exception");
-      this.log(`  [WARNING] Supabase exception: ${e.message}`);
+      this.logStep(
+        "ERROR",
+        `Supabase exception: ${e.message}`,
+        "saveNotFoundToSupabase",
+      );
     }
   }
 
@@ -258,14 +320,20 @@ export class AutomationEngine {
     try {
       // Allocate the port before any filesystem checks to aid debugging
       this.currentDebugPort = await getFreePort(this.currentDebugPort);
-      this.log(
-        `[INFO] Allocated dynamic debugging port: ${this.currentDebugPort}`,
+      this.logStep(
+        "INFO",
+        `Allocated dynamic debugging port: ${this.currentDebugPort}`,
+        "launchBrowser",
       );
 
       const browserPath = this.findBrowserPath(
         this.config?.settings?.browser_path,
       );
-      this.log(`[INFO] Found browser executable at: ${browserPath}`);
+      this.logStep(
+        "INFO",
+        `Found browser executable at: ${browserPath}`,
+        "launchBrowser",
+      );
 
       const profileDir = path.join(this.userDataPath, "chrome_debug_profile");
       if (!existsSync(profileDir)) {
@@ -275,8 +343,10 @@ export class AutomationEngine {
           const errMessage =
             error instanceof Error ? error.message : String(error);
           // We must explicitly log system-level write errors
-          this.log(
-            `[ERROR] Failed to create user profile directory at ${profileDir}: ${errMessage}`,
+          this.logStep(
+            "ERROR",
+            `Failed to create user profile directory at ${profileDir}: ${errMessage}`,
+            "launchBrowser",
           );
         }
       }
@@ -295,15 +365,24 @@ export class AutomationEngine {
         "--new-window",
       ];
 
-      this.log(`[INFO] Launching browser: ${browserPath}`);
+      this.logStep(
+        "ACTION",
+        `Launching browser: ${browserPath}`,
+        "launchBrowser",
+      );
       const child = spawn(browserPath, args, {
         stdio: "ignore",
         detached: true,
       });
+      this.browserProcess = child;
       child.unref();
     } catch (error) {
       const errMessage = error instanceof Error ? error.message : String(error);
-      this.log(`[CRITICAL ERROR] Failed to launch browser: ${errMessage}`);
+      this.logStep(
+        "ERROR",
+        `Failed to launch browser: ${errMessage}`,
+        "launchBrowser",
+      );
       throw error;
     }
   }
@@ -321,10 +400,15 @@ export class AutomationEngine {
       const l = page.locator(sel);
       const c = await l.count().catch(() => 0);
       if (c > 0) {
-        this.log(`  Cards: "${sel}" (${c})`);
+        this.logStep(
+          "DEBUG",
+          `Selector "${sel}" matched ${c} cards.`,
+          "findCards",
+        );
         return { loc: l, count: c };
       }
     }
+    this.logStep("DEBUG", "No cards found with known selectors.", "findCards");
     return { loc: null, count: 0 };
   }
 
@@ -338,7 +422,7 @@ export class AutomationEngine {
     ];
     for (const sel of selectors) {
       try {
-        const t = await card.locator(sel).first().innerText({ timeout: 1500 });
+        const t = await card.locator(sel).first().innerText({ timeout: 800 });
         if (t?.trim()) return t.trim();
       } catch (_) {}
     }
@@ -368,6 +452,14 @@ export class AutomationEngine {
       0,
     );
 
+    if (count > 0) {
+      this.logStep(
+        "INFO",
+        `Found ${count} "more filters" buttons.`,
+        "expandAllFilters",
+      );
+    }
+
     for (let i = 0; i < count; i++) {
       const isVisible = await this.safeExecute(
         moreBtns.nth(i).isVisible({ timeout: 500 }),
@@ -378,13 +470,20 @@ export class AutomationEngine {
       if (isVisible) {
         // Wrap the click action in a try/catch so one failure does not break the entire loop
         try {
+          this.logStep(
+            "ACTION",
+            `Clicking "more filters" (${i + 1}/${count}).`,
+            "expandAllFilters",
+          );
           await moreBtns.nth(i).click();
           await Humanizer.wait(300, 600);
         } catch (error) {
           const errMessage =
             error instanceof Error ? error.message : String(error);
-          this.log(
-            `[WARNING] Could not click 'more' button ${i}: ${errMessage}`,
+          this.logStep(
+            "ERROR",
+            `Could not click "more filters" button ${i}: ${errMessage}`,
+            "expandAllFilters",
           );
         }
       }
@@ -393,6 +492,11 @@ export class AutomationEngine {
 
   private async applyFilters(page: Page, filters: string[]) {
     if (!filters?.length) return;
+    this.logStep(
+      "INFO",
+      `Applying filters: ${filters.join(", ")}`,
+      "applyFilters",
+    );
     await Humanizer.wait(1500, 2500);
 
     // 1. Expand all hidden filter groups (click every "더보기" / "More" button).
@@ -431,8 +535,10 @@ export class AutomationEngine {
           } catch (error) {
             const errMessage =
               error instanceof Error ? error.message : String(error);
-            this.log(
-              `[ERROR] Failed to click filter element (out of stock): ${errMessage}`,
+            this.logStep(
+              "ERROR",
+              `Failed to click filter element (out of stock): ${errMessage}`,
+              "applyFilters",
             );
           }
         }
@@ -453,8 +559,10 @@ export class AutomationEngine {
           } catch (error) {
             const errMessage =
               error instanceof Error ? error.message : String(error);
-            this.log(
-              `[ERROR] Failed to click filter element (rocket): ${errMessage}`,
+            this.logStep(
+              "ERROR",
+              `Failed to click filter element (rocket): ${errMessage}`,
+              "applyFilters",
             );
           }
         }
@@ -491,13 +599,19 @@ export class AutomationEngine {
             try {
               await el.click();
               clicked = true;
-              this.log(`  [SUCCESS] Filter found and applied: "${f}"`);
+              this.logStep(
+                "SUCCESS",
+                `Filter found and applied: "${f}"`,
+                "applyFilters",
+              );
               break; // Exit the locator loop
             } catch (error) {
               const errMessage =
                 error instanceof Error ? error.message : String(error);
-              this.log(
-                `  [ERROR] Failed to click filter element: ${errMessage}`,
+              this.logStep(
+                "ERROR",
+                `Failed to click filter element: ${errMessage}`,
+                "applyFilters",
               );
             }
           }
@@ -509,8 +623,10 @@ export class AutomationEngine {
         await page.waitForLoadState("domcontentloaded", { timeout: 15000 });
         await Humanizer.wait(1500, 2500);
       } else {
-        this.log(
-          `  [WARNING] Filter not found: "${f}". It may be missing in this category.`,
+        this.logStep(
+          "DEBUG",
+          `Filter not found: "${f}". It may be missing in this category.`,
+          "applyFilters",
         );
       }
     }
@@ -518,6 +634,11 @@ export class AutomationEngine {
 
   private async applyCost(page: Page, costFilters: string[]) {
     if (!costFilters?.length) return;
+    this.logStep(
+      "INFO",
+      `Applying price filters: ${costFilters.join(", ")}`,
+      "applyCost",
+    );
     const norm = (s: string) => s.replace(/\s+/g, " ").trim();
     for (const ct of costFilters) {
       try {
@@ -541,14 +662,20 @@ export class AutomationEngine {
             await all.nth(i).click();
             await page.waitForLoadState("domcontentloaded", { timeout: 15000 });
             await Humanizer.wait(1500, 2500);
-            this.log(`  [SUCCESS] Price: "${norm(txt)}"`);
+            this.logStep(
+              "SUCCESS",
+              `Price filter applied: "${norm(txt)}"`,
+              "applyCost",
+            );
             clicked = true;
             break;
           }
         }
-        if (!clicked) this.log(`  [WARNING] Price not found: "${ct}"`);
+        if (!clicked) {
+          this.logStep("DEBUG", `Price filter not found: "${ct}"`, "applyCost");
+        }
       } catch (e: any) {
-        this.log(`  [WARNING] Price filter error: ${e.message}`);
+        this.logStep("ERROR", `Price filter error: ${e.message}`, "applyCost");
       }
     }
     await page.evaluate(() => window.scrollTo({ top: 0, behavior: "smooth" }));
@@ -566,17 +693,25 @@ export class AutomationEngine {
       await fs.mkdir(shots, { recursive: true });
     }
 
-    this.log(`[INFO] Checking debug port ${this.currentDebugPort}...`);
+    this.logStep(
+      "INFO",
+      `Checking debug port ${this.currentDebugPort}...`,
+      "run",
+    );
     if (!(await isCDPReady(this.currentDebugPort))) {
-      this.log("[INFO] Browser is closed. Launching automatically...");
+      this.logStep(
+        "ACTION",
+        "Browser is closed. Launching automatically...",
+        "run",
+      );
       await this.launchBrowser();
       if (!(await waitForCDP(this.currentDebugPort, 15000))) {
         throw new Error("Failed to connect to the browser.");
       }
     }
 
-    this.log("[INFO] Connecting to browser...");
-    let browser: Browser;
+    this.logStep("ACTION", "Connecting to browser...", "run");
+    let browser: Browser | null = null;
     try {
       browser = await patchright.chromium.connectOverCDP(
         `http://127.0.0.1:${this.currentDebugPort}`,
@@ -610,12 +745,13 @@ export class AutomationEngine {
     }
 
     const title = await page.title();
-    this.log(`Page: "${title}"`);
+    this.logStep("INFO", `Landing page title: "${title}"`, "run");
+    this.logStep("INFO", `Current URL: ${page.url()}`, "run");
     if (title.includes("Access Denied") || title.includes("Robot")) {
       await browser.close();
       throw new Error("Browser blocked by site (Access Denied).");
     }
-    this.log("[SUCCESS] Connection successful!\n");
+    this.logStep("SUCCESS", "Connection successful!", "run");
 
     ctx.on("page", (p: Page) => {
       p.on("dialog", async (d: any) => d.accept());
@@ -629,7 +765,13 @@ export class AutomationEngine {
         const searchStartedAt = Date.now();
         let lastPageReached = 0;
         let cardsScanned = 0;
-        this.log(`\n=== SEARCH: ${task.keyword} ===`);
+        this.logStep(
+          "INFO",
+          `Starting search for keyword "${task.keyword}"`,
+          "run",
+        );
+        this.logStep("INFO", `Target name: "${task.target_name}"`, "run");
+        this.logStep("INFO", `Current URL: ${page.url()}`, "run");
 
         const inp = page.locator(this.selectors.search_bar).first();
         const inputVisible = await this.safeExecute(
@@ -638,25 +780,34 @@ export class AutomationEngine {
           false,
         );
         if (!inputVisible) {
+          this.logStep(
+            "ACTION",
+            `Search input not visible. Navigating to ${this.config.settings.base_url}.`,
+            "run",
+          );
           await page.goto(this.config.settings.base_url, {
             waitUntil: "load",
             timeout: 60000,
           });
           await Humanizer.wait(2000, 3500);
         }
+        this.logStep("ACTION", "Focusing search input.", "run");
         await Humanizer.move(page, inp);
         await inp.click({ clickCount: 3 });
         await Humanizer.wait(150, 350);
         await inp.fill("");
+        this.logStep("ACTION", `Typing keyword "${task.keyword}".`, "run");
         await inp.type(task.keyword, { delay: 100 + Math.random() * 80 });
         await Humanizer.wait(400, 900);
         if (Math.random() > 0.5) await Humanizer.wait(600, 1500);
+        this.logStep("ACTION", "Submitting search.", "run");
         await page.keyboard.press("Enter");
         await page.waitForLoadState("load", { timeout: 30000 });
         await Humanizer.wait(2000, 4000);
+        this.logStep("INFO", `Search results URL: ${page.url()}`, "run");
 
         if ((await page.title()).includes("Access Denied")) {
-          this.log("[ERROR] Blocked by site.");
+          this.logStep("ERROR", "Blocked by site.", "run");
           break;
         }
 
@@ -665,17 +816,28 @@ export class AutomationEngine {
 
         let found = false;
         const maxP = this.config.settings.max_pages_to_search || 3;
+        const targetFragment = task.target_name
+          .trim()
+          .split(" ")
+          .slice(0, 4)
+          .join(" ");
+        this.logStep(
+          "DEBUG",
+          `Target fragment for matching: "${targetFragment}"`,
+          "run",
+        );
 
         for (let p = 1; p <= maxP; p++) {
           lastPageReached = p;
-          this.log(`  Page ${p}...`);
+          this.logStep("INFO", `PAGE ${p}/${maxP} scanning`, "run");
           await page.evaluate(() => window.scrollBy(0, 400));
-          await Humanizer.wait(1200, 2500);
+          await Humanizer.wait(600, 1400);
           await Humanizer.randomMove(page);
 
           const { loc: cards, count } = await this.findCards(page);
+          this.logStep("INFO", `PAGE ${p} cards found: ${count}`, "findCards");
           if (!cards || count === 0) {
-            this.log("  No product cards found.");
+            this.logStep("INFO", `PAGE ${p} no product cards found.`, "run");
             break;
           }
 
@@ -684,28 +846,77 @@ export class AutomationEngine {
           );
           const nonAdCards = cards.filter({ hasNot: adMarker });
           const nonAdCount = await nonAdCards.count().catch(() => 0);
+          this.logStep("DEBUG", `PAGE ${p} non-ad cards: ${nonAdCount}`, "run");
           if (nonAdCount === 0) {
-            this.log("  No non-ad product cards found.");
+            this.logStep(
+              "INFO",
+              `PAGE ${p} no non-ad product cards found.`,
+              "run",
+            );
             break;
           }
           for (let i = 0; i < nonAdCount; i++) {
             const card = nonAdCards.nth(i);
+            const cardNumber = i + 1;
+            this.logStep(
+              "INFO",
+              `PAGE ${p} processing card #${cardNumber}`,
+              "run",
+            );
+            const cardVisible = await this.safeExecute(
+              card.isVisible({ timeout: 200 }),
+              "checking card visibility",
+              true,
+            );
+            if (!cardVisible) {
+              this.logStep(
+                "SKIP",
+                `PAGE ${p} card #${cardNumber} skipped: not visible`,
+                "run",
+              );
+              continue;
+            }
             if (await this.isAdCard(card)) {
+              this.logStep(
+                "SKIP",
+                `PAGE ${p} card #${cardNumber} skipped: AD detected`,
+                "run",
+              );
               continue;
             }
             cardsScanned += 1;
             const name = await this.getName(card);
-            if (!name) continue;
-            const target = task.target_name
-              .trim()
-              .split(" ")
-              .slice(0, 4)
-              .join(" ");
-            if (name.toLowerCase().includes(target.toLowerCase())) {
-              this.log(`  [SUCCESS] Found: "${name}"`);
+            if (!name) {
+              this.logStep(
+                "SKIP",
+                `PAGE ${p} card #${cardNumber} skipped: missing title`,
+                "run",
+              );
+              continue;
+            }
+            this.logStep(
+              "DEBUG",
+              `PAGE ${p} card #${cardNumber} title: "${name}"`,
+              "run",
+            );
+            const nameMatches = name
+              .toLowerCase()
+              .includes(targetFragment.toLowerCase());
+            if (nameMatches) {
+              this.logStep(
+                "SUCCESS",
+                `PAGE ${p} card #${cardNumber} matched target (name contains "${targetFragment}")`,
+                "run",
+              );
+              this.emitResult(task, p, cardNumber);
               await Humanizer.move(page, card);
               await Humanizer.wait(400, 800);
 
+              this.logStep(
+                "ACTION",
+                `PAGE ${p} clicking card #${cardNumber}`,
+                "run",
+              );
               const [np] = await Promise.all([
                 ctx.waitForEvent("page"),
                 card.locator("a").first().click(),
@@ -713,8 +924,9 @@ export class AutomationEngine {
               await np.waitForLoadState("load", { timeout: 30000 });
               await Humanizer.wait(1500, 2500);
 
-              this.log("  Reading product page..."); // Previously in utils.ts
-              await Humanizer.simulateReading(np);
+              this.logStep("INFO", `Product page loaded: ${np.url()}`, "run");
+              this.logStep("INFO", "Reading product page.", "run");
+              await Humanizer.simulateReading(np, 15000, 20000);
 
               let cartOk = false;
               const cartSelectors = [
@@ -732,25 +944,45 @@ export class AutomationEngine {
                   await Humanizer.move(np, btn);
                   await Humanizer.wait(400, 900);
                   try {
+                    this.logStep(
+                      "ACTION",
+                      "Clicking add-to-cart button.",
+                      "run",
+                    );
                     await btn.click();
-                    this.log("  [SUCCESS] Added to cart.");
+                    this.logStep("SUCCESS", "Added to cart.", "run");
                     cartOk = true;
                     break;
                   } catch (error) {
                     const errMessage =
                       error instanceof Error ? error.message : String(error);
-                    this.log(
-                      `  [ERROR] Failed to click add-to-cart button: ${errMessage}`,
+                    this.logStep(
+                      "ERROR",
+                      `Failed to click add-to-cart button: ${errMessage}`,
+                      "run",
                     );
                   }
                 }
               }
-              await Humanizer.wait(3000, 5000);
+              if (!cartOk) {
+                this.logStep(
+                  "ERROR",
+                  "Add-to-cart button not found or click failed.",
+                  "run",
+                );
+              }
+              await Humanizer.wait(800, 1500);
               await np.close();
               await page.bringToFront();
               await Humanizer.wait(800, 1500);
               found = true;
               break;
+            } else {
+              this.logStep(
+                "SKIP",
+                `PAGE ${p} card #${cardNumber} skipped: no match to "${targetFragment}"`,
+                "run",
+              );
             }
           }
           if (found) break;
@@ -771,28 +1003,46 @@ export class AutomationEngine {
             if (isVisible) {
               await Humanizer.move(page, next);
               try {
+                this.logStep("ACTION", `PAGE ${p} clicking next page`, "run");
                 await next.click();
                 await page.waitForLoadState("domcontentloaded", {
                   timeout: 30000,
                 });
-                await Humanizer.wait(2500, 4500);
+                await Humanizer.wait(1500, 3000);
+                this.logStep("INFO", `PAGE ${p + 1} loaded`, "run");
                 nextOk = true;
                 break;
               } catch (error) {
                 const errMessage =
                   error instanceof Error ? error.message : String(error);
-                this.log(
-                  `  [ERROR] Failed to click pagination next: ${errMessage}`,
+                this.logStep(
+                  "ERROR",
+                  `Failed to click pagination next: ${errMessage}`,
+                  "run",
                 );
               }
             }
           }
-          if (!nextOk) break;
+          if (!nextOk) {
+            this.logStep(
+              "INFO",
+              `PAGE ${p} no next page button found. Stopping pagination.`,
+              "run",
+            );
+            break;
+          }
         }
 
         if (!found) {
-          this.log(
-            `  [ERROR] Not found: "${task.target_name.slice(0, 35)}..."`,
+          this.logStep(
+            "ERROR",
+            `Target not found: "${task.target_name.slice(0, 35)}..."`,
+            "run",
+          );
+          this.logStep(
+            "INFO",
+            `Search summary: pages=${lastPageReached}, cards=${cardsScanned}`,
+            "run",
           );
           const searchTimeMs = Date.now() - searchStartedAt;
           await this.reportNotFound(
@@ -804,11 +1054,12 @@ export class AutomationEngine {
             cardsScanned,
           );
         }
-        const pause = Math.floor(Math.random() * 12 + 8);
+        const pause = Math.floor(Math.random() * 6 + 5);
+        this.logStep("DEBUG", `Pausing ${pause}s before next task.`, "run");
         await Humanizer.wait(pause * 1000, pause * 1000 + 4000);
       }
 
-      this.log("\n--- Cart ---");
+      this.logStep("INFO", "Opening cart page.", "run");
       await page.goto("https://cart.coupang.com/cartView.pang", {
         waitUntil: "load",
         timeout: 30000,
@@ -829,7 +1080,7 @@ export class AutomationEngine {
       for (const sel of cartContainerSelectors) {
         const container = page.locator(sel).first();
         if (await container.isVisible({ timeout: 5000 }).catch(() => false)) {
-          this.log("  Capturing cart items area...");
+          this.logStep("ACTION", "Capturing cart items area.", "run");
           await container.screenshot({ path: screenshotPath });
           shotDone = true;
           break;
@@ -837,19 +1088,31 @@ export class AutomationEngine {
       }
 
       if (!shotDone) {
-        this.log(
-          "  [WARNING] Cart container not found. Taking a regular screenshot.",
+        this.logStep(
+          "DEBUG",
+          "Cart container not found. Taking a regular screenshot.",
+          "run",
         );
         await page.screenshot({ path: screenshotPath, fullPage: false });
       }
 
-      this.log(`[SUCCESS] Screenshot saved: ${file}`);
+      this.logStep("SUCCESS", `Screenshot saved: ${file}`, "run");
       return screenshotPath; // Return the file path for the UI open button
     } catch (e: any) {
-      this.log(`[ERROR] Execution error: ${e.message}`);
+      this.logStep("ERROR", `Execution error: ${e.message}`, "run");
       return null;
     } finally {
-      await browser.close();
+      if (browser) {
+        try {
+          this.logStep("ACTION", "Closing browser.", "run");
+          await browser.close();
+        } catch (_) {}
+      }
+      if (this.browserProcess && !this.browserProcess.killed) {
+        try {
+          this.browserProcess.kill();
+        } catch (_) {}
+      }
     }
   }
 }
