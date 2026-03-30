@@ -1,4 +1,41 @@
 import { Page, Locator } from "patchright";
+import * as net from "net";
+
+/**
+ * Requests a free port from the operating system and immediately releases it.
+ * @param fallbackPort The port to return if the OS fails to allocate one.
+ * @returns A promise that resolves to an available port number.
+ */
+export async function getFreePort(fallbackPort = 9222): Promise<number> {
+  return new Promise((resolve) => {
+    const server = net.createServer();
+
+    // Catch system-level network errors to prevent application crashes
+    server.on("error", (err) => {
+      console.error(
+        `[ERROR] Failed to allocate dynamic port: ${err.message}. Using fallback: ${fallbackPort}`,
+      );
+      resolve(fallbackPort);
+    });
+
+    // Listening on port 0 forces the OS to automatically assign an unused port
+    server.listen(0, () => {
+      const address = server.address();
+
+      // Ensure the address is an AddressInfo object, not a string (Unix domain sockets)
+      if (address && typeof address !== "string") {
+        const port = address.port;
+        // The server must be closed immediately so Chromium can bind to this port
+        server.close(() => {
+          resolve(port);
+        });
+      } else {
+        // Fallback in the rare event the address object is malformed
+        server.close(() => resolve(fallbackPort));
+      }
+    });
+  });
+}
 
 /**
  * Класс Humanizer симулирует поведение реального пользователя,
