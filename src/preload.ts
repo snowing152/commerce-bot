@@ -8,6 +8,11 @@ contextBridge.exposeInMainWorld("api", {
     ipcRenderer.on("bot-done", (_event, path) => callback(path)),
   onBotResult: (callback: (data: any) => void) =>
     ipcRenderer.on("bot-result", (_event, data) => callback(data)),
+  // Session persistence
+  saveSession: (data: any) => ipcRenderer.invoke("save-session", data),
+  loadSession: () => ipcRenderer.invoke("load-session"),
+  // Send logs to Telegram
+  sendLogToTelegram: () => ipcRenderer.invoke("send-log-telegram"),
   openScreenshot: (path: string) => ipcRenderer.send("open-path", path),
   onUpdateProgress: (callback: (percent: number) => void) =>
     ipcRenderer.on("update-progress", (_event, p) => callback(p)),

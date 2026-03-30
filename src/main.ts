@@ -17,6 +17,97 @@ ipcMain.handle("get-version", () => {
   return app.getVersion();
 });
 
+const SESSION_FILE_NAME = "saved_session.json";
+
+function escapeMarkdownV2(text: string) {
+  return text.replace(/([\\_*\[\]()~`>#+\-=|{}.!])/g, "\\$1");
+}
+
+// 1. Save session data
+ipcMain.handle("save-session", async (_event, data) => {
+  try {
+    const sessionPath = path.join(USER_DATA_PATH, SESSION_FILE_NAME);
+    fs.writeFileSync(sessionPath, JSON.stringify(data, null, 2), "utf-8");
+    return { success: true };
+  } catch (error) {
+    console.error("Failed to save session:", error);
+    return { success: false };
+  }
+});
+
+// 2. Load session data
+ipcMain.handle("load-session", async () => {
+  try {
+    const sessionPath = path.join(USER_DATA_PATH, SESSION_FILE_NAME);
+    if (fs.existsSync(sessionPath)) {
+      const data = fs.readFileSync(sessionPath, "utf-8");
+      return JSON.parse(data);
+    }
+  } catch (error) {
+    console.error("Failed to load session:", error);
+  }
+  return null;
+});
+
+// 3. Send logs to Telegram
+ipcMain.handle("send-log-telegram", async () => {
+  try {
+    const userConfigPath = path.join(USER_DATA_PATH, "config.json");
+    const defaultConfigPath = path.join(__dirname, "../config/config.json");
+    let configRaw: string | null = null;
+
+    if (fs.existsSync(userConfigPath)) {
+      configRaw = fs.readFileSync(userConfigPath, "utf-8");
+    } else if (fs.existsSync(defaultConfigPath)) {
+      configRaw = fs.readFileSync(defaultConfigPath, "utf-8");
+    }
+
+    if (!configRaw) {
+      throw new Error("config.json not found");
+    }
+
+    const config = JSON.parse(configRaw);
+    const { bot_token, chat_id } = config.telegram || {};
+
+    if (!bot_token || !chat_id) {
+      throw new Error("Telegram token or chat_id is missing in config.json");
+    }
+
+    const logPath = path.join(USER_DATA_PATH, "bot_log.txt");
+
+    if (!fs.existsSync(logPath)) {
+      throw new Error(
+        "\u0424\u0430\u0439\u043b \u043b\u043e\u0433\u043e\u0432 \u0435\u0449\u0435 \u043d\u0435 \u0441\u043e\u0437\u0434\u0430\u043d.",
+      );
+    }
+
+    const logContent = fs.readFileSync(logPath, "utf-8");
+    const textToSend =
+      logContent.length > 4000 ? "... " + logContent.slice(-3900) : logContent;
+    const escapedText = escapeMarkdownV2(textToSend);
+
+    const url = `https://api.telegram.org/bot${bot_token}/sendMessage`;
+    const response = await fetch(url, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        chat_id,
+        text: `\ud83e\udd16 *Coupang Bot Logs:*\n\n\`\`\`text\n${escapedText}\n\`\`\``,
+        parse_mode: "MarkdownV2",
+      }),
+    });
+
+    if (!response.ok) {
+      throw new Error("Telegram API error: " + response.statusText);
+    }
+
+    return { success: true };
+  } catch (error) {
+    const errMessage = error instanceof Error ? error.message : String(error);
+    return { success: false, error: errMessage };
+  }
+});
+
 // Safely copy base configs on first launch
 function setupUserFiles() {
   const configDest = path.join(USER_DATA_PATH, "config.json");
@@ -40,6 +131,14 @@ function setupUserFiles() {
         userConfig && typeof userConfig === "object"
           ? userConfig.settings || {}
           : {};
+      const defaultTelegram =
+        defaultConfig && typeof defaultConfig === "object"
+          ? defaultConfig.telegram || {}
+          : {};
+      const userTelegram =
+        userConfig && typeof userConfig === "object"
+          ? userConfig.telegram || {}
+          : {};
 
       let changed = false;
       for (const [key, value] of Object.entries(defaultSettings)) {
@@ -49,9 +148,17 @@ function setupUserFiles() {
         }
       }
 
+      for (const [key, value] of Object.entries(defaultTelegram)) {
+        if (userTelegram[key] === undefined) {
+          userTelegram[key] = value;
+          changed = true;
+        }
+      }
+
       if (changed) {
         if (userConfig && typeof userConfig === "object") {
           userConfig.settings = userSettings;
+          userConfig.telegram = userTelegram;
           fs.writeFileSync(configDest, JSON.stringify(userConfig, null, 2));
         }
       }

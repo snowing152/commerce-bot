@@ -84,6 +84,18 @@
       button.success:hover {
         background: #2ecc71;
       }
+      button.info {
+        background: #0088cc;
+      }
+      button.info:hover {
+        background: #0077b3;
+      }
+
+      .actions {
+        display: grid;
+        gap: 10px;
+        margin-top: 15px;
+      }
 
       .task-block {
         background: #fdfdfd;
@@ -224,6 +236,9 @@
       <div class="card">
         <h2>Данные о товарах</h2>
         <div id="tasksContainer"></div>
+        <div class="actions">
+          <button id="saveBtn" class="secondary">Сохранить ввод</button>
+        </div>
         <button id="btnStart" class="success">▶ Запустить бота</button>
         <button id="btnBackToSetup" class="secondary">
           ◀ Назад (изменить количество)
@@ -300,6 +315,12 @@
         </table>
       </div>
 
+      <div class="actions">
+        <button id="sendLogBtn" class="info">
+          Отправить логи разработчику
+        </button>
+      </div>
+
       <button id="btnMainMenu" class="secondary">
         Вернуться в главное меню
       </button>
@@ -340,6 +361,19 @@
 
       let currentScreenshotPath = null;
       let results = [];
+      let savedSession = null;
+
+      async function loadSavedSession() {
+        const data = await window.api.loadSession();
+        if (data) {
+          savedSession = data;
+          if (typeof data.productCount === "number") {
+            document.getElementById("productCount").value = data.productCount;
+          }
+        }
+      }
+
+      loadSavedSession();
 
       function appendResultRow(data) {
         document.querySelectorAll(".results-body").forEach((tableBody) => {
@@ -355,10 +389,7 @@
         });
       }
 
-      // ЭКРАН 1 -> ЭКРАН 2
-      document.getElementById("btnGenerate").addEventListener("click", () => {
-        const count =
-          parseInt(document.getElementById("productCount").value) || 1;
+      function renderTasks(count, savedTasks = []) {
         const container = document.getElementById("tasksContainer");
         container.innerHTML = "";
 
@@ -380,6 +411,44 @@
                     </div>
                 `;
         }
+
+        for (let i = 1; i <= count; i++) {
+          const saved = savedTasks[i - 1];
+          if (!saved) continue;
+          const keywordInput = document.getElementById(`keyword_${i}`);
+          const targetNameInput = document.getElementById(`targetName_${i}`);
+          const filtersInput = document.getElementById(`filters_${i}`);
+
+          if (saved.keyword) keywordInput.value = saved.keyword;
+          if (saved.target_name) targetNameInput.value = saved.target_name;
+          if (Array.isArray(saved.filters)) {
+            filtersInput.value = saved.filters.join(", ");
+          }
+        }
+      }
+
+      function readTaskInputs(count) {
+        const tasks = [];
+        for (let i = 1; i <= count; i++) {
+          const keyword = document.getElementById(`keyword_${i}`).value.trim();
+          const targetName = document
+            .getElementById(`targetName_${i}`)
+            .value.trim();
+          const filtersRaw = document.getElementById(`filters_${i}`).value;
+          const filters = filtersRaw
+            .split(",")
+            .map((f) => f.trim())
+            .filter((f) => f);
+          tasks.push({ keyword, target_name: targetName, filters, cost: [] });
+        }
+        return tasks;
+      }
+
+      // ЭКРАН 1 -> ЭКРАН 2
+      document.getElementById("btnGenerate").addEventListener("click", () => {
+        const count =
+          parseInt(document.getElementById("productCount").value) || 1;
+        renderTasks(count, savedSession?.tasks || []);
         switchView("view-tasks");
       });
 
@@ -394,24 +463,13 @@
       document.getElementById("btnStart").addEventListener("click", () => {
         const count =
           parseInt(document.getElementById("productCount").value) || 1;
-        const tasks = [];
+        const tasks = readTaskInputs(count);
 
-        for (let i = 1; i <= count; i++) {
-          const keyword = document.getElementById(`keyword_${i}`).value.trim();
-          const targetName = document
-            .getElementById(`targetName_${i}`)
-            .value.trim();
-          const filtersRaw = document.getElementById(`filters_${i}`).value;
-          const filters = filtersRaw
-            .split(",")
-            .map((f) => f.trim())
-            .filter((f) => f);
-
-          if (!keyword || !targetName) {
-            alert(`Заполните обязательные поля для Товара #${i}`);
+        for (let i = 0; i < tasks.length; i++) {
+          if (!tasks[i].keyword || !tasks[i].target_name) {
+            alert(`Заполните обязательные поля для Товара #${i + 1}`);
             return;
           }
-          tasks.push({ keyword, target_name: targetName, filters, cost: [] });
         }
 
         document.getElementById("logConsole").innerText = "Инициализация...\n";
@@ -422,6 +480,46 @@
         switchView("view-running");
         window.api.startBot(tasks);
       });
+
+      // Save session data
+      document.getElementById("saveBtn").addEventListener("click", async () => {
+        const count =
+          parseInt(document.getElementById("productCount").value) || 1;
+        const dataToSave = {
+          productCount: count,
+          tasks: readTaskInputs(count),
+        };
+
+        const result = await window.api.saveSession(dataToSave);
+        if (result && result.success) {
+          savedSession = dataToSave;
+          alert("Данные успешно сохранены!");
+        } else {
+          alert("Не удалось сохранить данные.");
+        }
+      });
+
+      // Send logs to Telegram
+      document
+        .getElementById("sendLogBtn")
+        .addEventListener("click", async () => {
+          const sendLogBtn = document.getElementById("sendLogBtn");
+          const originalText = sendLogBtn.innerText;
+          sendLogBtn.innerText = "Отправка...";
+          sendLogBtn.disabled = true;
+
+          const result = await window.api.sendLogToTelegram();
+
+          if (result && result.success) {
+            alert("Логи успешно отправлены в Telegram!");
+          } else {
+            const errorText = result?.error || "Неизвестная ошибка";
+            alert(`Ошибка при отправке: ${errorText}`);
+          }
+
+          sendLogBtn.innerText = originalText;
+          sendLogBtn.disabled = false;
+        });
 
       // Добавление логов в консоль
       window.api.onLog((msg) => {
