@@ -1,8 +1,17 @@
 import { app, BrowserWindow, ipcMain, shell } from "electron";
 import * as path from "path";
 import * as fs from "fs";
-import { autoUpdater } from "electron-updater";
 import { AutomationEngine } from "./engine";
+
+let autoUpdater: any = null;
+try {
+  autoUpdater = require("electron-updater").autoUpdater;
+} catch (error) {
+  const errMessage = error instanceof Error ? error.message : String(error);
+  console.warn(
+    `[setupAutoUpdater] electron-updater unavailable: ${errMessage}`,
+  );
+}
 
 // Get the system user data folder (on Windows this is AppData/Roaming/Coupang Bot)
 const USER_DATA_PATH = app.getPath("userData");
@@ -11,6 +20,8 @@ let updateRetryTimer: NodeJS.Timeout | null = null;
 let updateRetryAttempt = 0;
 const UPDATE_RETRY_BASE_MS = 15000;
 const UPDATE_RETRY_MAX_MS = 300000;
+// Keep a strong reference to the window to avoid accidental GC.
+let mainWindow: BrowserWindow | null = null;
 
 // Handler for retrieving the app version
 ipcMain.handle("get-version", () => {
@@ -117,84 +128,100 @@ function setupUserFiles() {
   const configSrc = path.join(__dirname, "../config/config.json");
   const selectorsSrc = path.join(__dirname, "../config/selectors.json");
 
-  if (!fs.existsSync(configDest) && fs.existsSync(configSrc)) {
-    fs.copyFileSync(configSrc, configDest);
-  } else if (fs.existsSync(configDest) && fs.existsSync(configSrc)) {
-    try {
-      const userConfig = JSON.parse(fs.readFileSync(configDest, "utf-8"));
-      const defaultConfig = JSON.parse(fs.readFileSync(configSrc, "utf-8"));
-      const defaultSettings =
-        defaultConfig && typeof defaultConfig === "object"
-          ? defaultConfig.settings || {}
-          : {};
-      const userSettings =
-        userConfig && typeof userConfig === "object"
-          ? userConfig.settings || {}
-          : {};
-      const defaultTelegram =
-        defaultConfig && typeof defaultConfig === "object"
-          ? defaultConfig.telegram || {}
-          : {};
-      const userTelegram =
-        userConfig && typeof userConfig === "object"
-          ? userConfig.telegram || {}
-          : {};
+  try {
+    // --- config.json ---
+    if (!fs.existsSync(configSrc)) {
+      // Default config missing in build.
+      console.warn("[setupUserFiles] Default config.json not found in build.");
+    } else if (!fs.existsSync(configDest)) {
+      // First run: copy defaults.
+      fs.copyFileSync(configSrc, configDest);
+      console.log("[setupUserFiles] Config initialized from defaults.");
+    } else {
+      // Existing user config: merge with defaults.
+      try {
+        const defaultConfig = JSON.parse(fs.readFileSync(configSrc, "utf-8"));
+        const userConfig = JSON.parse(fs.readFileSync(configDest, "utf-8"));
 
-      let changed = false;
-      for (const [key, value] of Object.entries(defaultSettings)) {
-        if (userSettings[key] === undefined) {
-          userSettings[key] = value;
-          changed = true;
-        }
-      }
+        // 1. telegram: use defaults from build.
+        const mergedTelegram = { ...defaultConfig.telegram };
 
-      for (const [key, value] of Object.entries(defaultTelegram)) {
-        if (userTelegram[key] === undefined) {
-          userTelegram[key] = value;
-          changed = true;
-        }
-      }
+        // 2. settings: use defaults but preserve user's browser_path.
+        const mergedSettings = {
+          ...defaultConfig.settings,
+          // Preserve user browser_path (even empty) since user knows their install.
+          browser_path: userConfig.settings?.browser_path ?? "",
+        };
 
-      if (changed) {
-        if (userConfig && typeof userConfig === "object") {
-          userConfig.settings = userSettings;
-          userConfig.telegram = userTelegram;
-          fs.writeFileSync(configDest, JSON.stringify(userConfig, null, 2));
-        }
+        // 3. tasks: keep user's tasks, fallback to defaults if missing.
+        const mergedTasks = Array.isArray(userConfig.tasks)
+          ? userConfig.tasks
+          : defaultConfig.tasks;
+
+        const merged = {
+          settings: mergedSettings,
+          telegram: mergedTelegram,
+          tasks: mergedTasks,
+        };
+
+        fs.writeFileSync(configDest, JSON.stringify(merged, null, 2), "utf-8");
+        console.log("[setupUserFiles] Config updated from new build.");
+      } catch (error) {
+        // Keep user config if merge fails.
+        console.warn(
+          "[setupUserFiles] Failed to merge config, keeping existing:",
+          error,
+        );
       }
-    } catch (error) {
-      console.warn("Не удалось обновить настройки конфигурации:", error);
     }
-  }
 
-  // Always copy selectors (force refresh of the locator baseline)
-  if (fs.existsSync(selectorsSrc)) {
-    fs.copyFileSync(selectorsSrc, selectorsDest);
+    // Always copy selectors (force refresh of the locator baseline)
+    if (fs.existsSync(selectorsSrc)) {
+      fs.copyFileSync(selectorsSrc, selectorsDest);
+    }
+  } catch (error) {
+    // Prevent startup crash if AppData is locked or unavailable.
+    console.error("Critical error configuring user files:", error);
   }
 }
 
 function createWindow() {
-  const win = new BrowserWindow({
+  const webPreferences = {
+    preload: path.join(__dirname, "preload.js"),
+    nodeIntegration: false,
+    contextIsolation: true,
+    enableRemoteModule: false,
+  } as Electron.WebPreferences & { enableRemoteModule: false };
+
+  mainWindow = new BrowserWindow({
     width: 550,
     height: 650,
     autoHideMenuBar: true,
     icon: path.join(__dirname, "../assets/icon.ico"),
-    webPreferences: {
-      preload: path.join(__dirname, "preload.js"),
-      nodeIntegration: false,
-      contextIsolation: true,
-    },
+    webPreferences,
   });
 
-  win.loadFile(path.join(__dirname, "../src/index.html"));
+  mainWindow.loadFile(path.join(__dirname, "../src/index.html"));
 
-  win.webContents.once("did-finish-load", () => {
-    setupAutoUpdater(win);
+  mainWindow.webContents.once("did-finish-load", () => {
+    if (mainWindow) setupAutoUpdater(mainWindow);
+  });
+
+  mainWindow.on("closed", () => {
+    mainWindow = null;
   });
 }
 
 // Manages the update workflow
 function setupAutoUpdater(win: BrowserWindow) {
+  if (!autoUpdater) {
+    win.webContents.send(
+      "update-status",
+      "Модуль автообновления недоступен в этой сборке.",
+    );
+    return;
+  }
+
   if (autoUpdaterInitialized) return;
   autoUpdaterInitialized = true;
 
@@ -252,7 +279,7 @@ function setupAutoUpdater(win: BrowserWindow) {
       if (!win.isDestroyed()) {
         sendStatus("Повторяю проверку обновлений...");
       }
-      autoUpdater.checkForUpdatesAndNotify().catch((error) => {
+      autoUpdater.checkForUpdatesAndNotify().catch((error: any) => {
         const nextMessage =
           error?.message || String(error || "Неизвестная ошибка");
         scheduleRetry(nextMessage);
@@ -282,7 +309,7 @@ function setupAutoUpdater(win: BrowserWindow) {
     sendStatus("Установлена последняя версия");
   });
 
-  autoUpdater.on("download-progress", (progressObj) => {
+  autoUpdater.on("download-progress", (progressObj: any) => {
     const percent = Math.max(0, Math.min(100, Math.round(progressObj.percent)));
     sendProgress(percent);
     // Show the percentage on the main screen
@@ -299,13 +326,13 @@ function setupAutoUpdater(win: BrowserWindow) {
     }, 3000);
   });
 
-  autoUpdater.on("error", (error) => {
+  autoUpdater.on("error", (error: any) => {
     const message = error?.message || String(error || "Неизвестная ошибка");
     sendLog(`[СИСТЕМА] Ошибка обновления: ${message}`);
     scheduleRetry(message);
   });
 
-  autoUpdater.checkForUpdatesAndNotify().catch((error) => {
+  autoUpdater.checkForUpdatesAndNotify().catch((error: any) => {
     const message = error?.message || String(error || "Неизвестная ошибка");
     sendLog(`[СИСТЕМА] Ошибка обновления: ${message}`);
     scheduleRetry(message);

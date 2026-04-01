@@ -363,6 +363,25 @@
       let results = [];
       let savedSession = null;
 
+      function ensureTaskInputsInteractive() {
+        const taskInputs = document.querySelectorAll(
+          '#tasksContainer input[type="text"]',
+        );
+        taskInputs.forEach((input) => {
+          input.disabled = false;
+          input.readOnly = false;
+        });
+        if (taskInputs.length > 0) {
+          setTimeout(() => {
+            taskInputs[0].focus();
+            taskInputs[0].setSelectionRange(
+              taskInputs[0].value.length,
+              taskInputs[0].value.length,
+            );
+          }, 0);
+        }
+      }
+
       async function loadSavedSession() {
         const data = await window.api.loadSession();
         if (data) {
@@ -450,6 +469,7 @@
           parseInt(document.getElementById("productCount").value) || 1;
         renderTasks(count, savedSession?.tasks || []);
         switchView("view-tasks");
+        ensureTaskInputsInteractive();
       });
 
       // ЭКРАН 2 -> ЭКРАН 1 (Кнопка Назад)
@@ -565,6 +585,12 @@
       document.getElementById("btnMainMenu").addEventListener("click", () => {
         document.getElementById("productCount").value = 1;
         switchView("view-setup");
+        setTimeout(() => {
+          const productCountInput = document.getElementById("productCount");
+          productCountInput.disabled = false;
+          productCountInput.readOnly = false;
+          productCountInput.focus();
+        }, 0);
       });
 
       // Слушатель прогресса скачивания обновления
