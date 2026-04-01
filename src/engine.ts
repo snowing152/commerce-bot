@@ -44,7 +44,14 @@ export interface BotResult {
   location: string;
 }
 
-type LogLevel = "INFO" | "DEBUG" | "SKIP" | "ACTION" | "SUCCESS" | "ERROR";
+type LogLevel =
+  | "INFO"
+  | "DEBUG"
+  | "WARN"
+  | "SKIP"
+  | "ACTION"
+  | "SUCCESS"
+  | "ERROR";
 
 export class AutomationEngine {
   private config!: BotConfig;
@@ -493,7 +500,7 @@ export class AutomationEngine {
             `Clicking "more filters" (${i + 1}/${count}).`,
             "expandAllFilters",
           );
-          await moreBtns.nth(i).click();
+          await moreBtns.nth(i).click({ timeout: 3000 });
           await Humanizer.wait(300, 600);
         } catch (error) {
           const errMessage =
@@ -510,6 +517,7 @@ export class AutomationEngine {
 
   private async applyFilters(page: Page, filters: string[]) {
     if (!filters?.length) return;
+    const filterTimeoutMs = 3000;
     this.logStep(
       "INFO",
       `Applying filters: ${filters.join(", ")}`,
@@ -526,8 +534,18 @@ export class AutomationEngine {
       .locator("#searchOptionForm, .search-filter-options, .search-filters")
       .first();
 
+    const panelVisible = await this.safeExecute(
+      filterPanel.isVisible({ timeout: 3000 }),
+      "checking filter panel visibility",
+      false,
+    );
+    const searchRoot = panelVisible ? filterPanel : page;
+
     for (const f of filters) {
+      const filterStart = Date.now();
+      const isTimedOut = () => Date.now() - filterStart >= filterTimeoutMs;
       let clicked = false;
+      let timedOut = false;
       const filterLower = f.toLowerCase();
 
       // STEP 1: Check hardcoded/system filters (Delivery, Availability).
@@ -536,6 +554,9 @@ export class AutomationEngine {
         filterLower.includes("품절") ||
         filterLower.includes("out of stock")
       ) {
+        if (isTimedOut()) {
+          timedOut = true;
+        }
         const el = page
           .locator(
             "label.search-filter-exclude-out-of-stock, input#outOfStockProduct + label",
@@ -546,9 +567,9 @@ export class AutomationEngine {
           "checking filter visibility (out of stock)",
           false,
         );
-        if (isVisible) {
+        if (isVisible && !timedOut) {
           try {
-            await el.click();
+            await el.click({ timeout: 3000 });
             clicked = true;
           } catch (error) {
             const errMessage =
@@ -564,15 +585,18 @@ export class AutomationEngine {
         filterLower.includes("rocket") ||
         filterLower.includes("로켓")
       ) {
+        if (isTimedOut()) {
+          timedOut = true;
+        }
         const el = page.locator('label[data-component-name*="rocket"]').first();
         const isVisible = await this.safeExecute(
           el.isVisible({ timeout: 1500 }),
           "checking filter visibility (rocket)",
           false,
         );
-        if (isVisible) {
+        if (isVisible && !timedOut) {
           try {
-            await el.click();
+            await el.click({ timeout: 3000 });
             clicked = true;
           } catch (error) {
             const errMessage =
@@ -588,14 +612,9 @@ export class AutomationEngine {
 
       // STEP 2: Dynamic/semantic search (sizes, brands, colors, materials, ratings).
       if (!clicked) {
-        // If the filter panel is missing (layout changed), search the whole page.
-        const panelVisible = await this.safeExecute(
-          filterPanel.isVisible(),
-          "checking filter panel visibility",
-          false,
-        );
-        const searchRoot = panelVisible ? filterPanel : page;
-
+        if (isTimedOut()) {
+          timedOut = true;
+        }
         // Use text-based locators to find elements that include the user-provided text.
         const textLocators = [
           searchRoot.locator("label", { hasText: f }),
@@ -605,6 +624,10 @@ export class AutomationEngine {
         ];
 
         for (const loc of textLocators) {
+          if (isTimedOut()) {
+            timedOut = true;
+            break;
+          }
           // Take the first visible match.
           const el = loc.first();
           const isVisible = await this.safeExecute(
@@ -615,7 +638,7 @@ export class AutomationEngine {
           if (isVisible) {
             await Humanizer.move(page, el);
             try {
-              await el.click();
+              await el.click({ timeout: 3000 });
               clicked = true;
               this.logStep(
                 "SUCCESS",
@@ -642,8 +665,10 @@ export class AutomationEngine {
         await Humanizer.wait(1500, 2500);
       } else {
         this.logStep(
-          "DEBUG",
-          `Filter not found: "${f}". It may be missing in this category.`,
+          "WARN",
+          timedOut
+            ? `Filter search timed out: "${f}". Skipping.`
+            : `Filter not found: "${f}". Skipping.`,
           "applyFilters",
         );
       }
