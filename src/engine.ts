@@ -63,10 +63,36 @@ export class AutomationEngine {
 
   private userDataPath: string;
   private logFilePath: string;
+  private readonly portLockFile: string;
 
   constructor(userDataPath: string) {
     this.userDataPath = userDataPath;
     this.logFilePath = path.join(this.userDataPath, "bot_log.txt");
+    this.portLockFile = path.join(this.userDataPath, "debug_port.lock");
+  }
+
+  private async readPortLock(): Promise<number | null> {
+    try {
+      const raw = await fs.readFile(this.portLockFile, "utf-8");
+      const port = parseInt(raw.trim(), 10);
+      if (Number.isFinite(port) && port > 0 && port <= 65535) return port;
+    } catch (_) {
+      // Missing file is expected on first run.
+    }
+    return null;
+  }
+
+  private async writePortLock(port: number): Promise<void> {
+    try {
+      await fs.writeFile(this.portLockFile, String(port), "utf-8");
+    } catch (error) {
+      const errMessage = error instanceof Error ? error.message : String(error);
+      this.logStep(
+        "ERROR",
+        `Failed to write port lock: ${errMessage}`,
+        "writePortLock",
+      );
+    }
   }
 
   public onLog?: (msg: string) => void;
@@ -400,6 +426,7 @@ export class AutomationEngine {
         detached: true,
       });
       this.browserProcess = child;
+      await this.writePortLock(this.currentDebugPort);
       child.unref();
     } catch (error) {
       const errMessage = error instanceof Error ? error.message : String(error);
@@ -734,6 +761,16 @@ export class AutomationEngine {
       await fs.access(shots);
     } catch {
       await fs.mkdir(shots, { recursive: true });
+    }
+
+    const savedPort = await this.readPortLock();
+    if (savedPort !== null) {
+      this.currentDebugPort = savedPort;
+      this.logStep(
+        "INFO",
+        `Restored debug port from lock file: ${this.currentDebugPort}`,
+        "run",
+      );
     }
 
     this.logStep(
