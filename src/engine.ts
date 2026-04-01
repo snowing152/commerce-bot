@@ -801,10 +801,24 @@ export class AutomationEngine {
     }
 
     const contexts = browser.contexts();
-    const ctx: BrowserContext =
-      contexts.find((c) => c.pages().length > 0) || contexts[0];
+    const ctx: BrowserContext | undefined =
+      contexts.find((c) => c.pages().length > 0) ?? contexts[0];
+
+    if (!ctx) {
+      await browser.close();
+      throw new Error(
+        "No browser context available. The browser may have launched but not initialized yet.",
+      );
+    }
 
     const pages: Page[] = ctx.pages();
+    if (pages.length === 0) {
+      this.logStep(
+        "WARN",
+        "No existing pages in context. Opening a new tab.",
+        "run",
+      );
+    }
     let page: Page | undefined =
       pages.find((p: Page) => p.url().includes("coupang.com")) || pages[0];
 
