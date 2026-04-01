@@ -585,10 +585,10 @@ export class AutomationEngine {
 
         // Use text-based locators to find elements that include the user-provided text.
         const textLocators = [
-          searchRoot.locator(`label:has-text("${f}")`),
-          searchRoot.locator(`a:has-text("${f}")`),
-          searchRoot.locator(`button:has-text("${f}")`),
-          searchRoot.locator(`span:has-text("${f}")`),
+          searchRoot.locator("label", { hasText: f }),
+          searchRoot.locator("a", { hasText: f }),
+          searchRoot.locator("button", { hasText: f }),
+          searchRoot.locator("span", { hasText: f }),
         ];
 
         for (const loc of textLocators) {
