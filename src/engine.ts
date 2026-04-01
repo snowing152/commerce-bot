@@ -907,17 +907,21 @@ export class AutomationEngine {
           "run",
         );
 
-        for (let p = 1; p <= maxP; p++) {
-          lastPageReached = p;
-          this.logStep("INFO", `PAGE ${p}/${maxP} scanning`, "run");
+        for (let pageNum = 1; pageNum <= maxP; pageNum++) {
+          lastPageReached = pageNum;
+          this.logStep("INFO", `PAGE ${pageNum}/${maxP} scanning`, "run");
           await page.evaluate(() => window.scrollBy(0, 400));
           await Humanizer.wait(600, 1400);
           await Humanizer.randomMove(page);
 
           const { loc: cards, count } = await this.findCards(page);
-          this.logStep("INFO", `PAGE ${p} cards found: ${count}`, "findCards");
+          this.logStep("INFO", `PAGE ${pageNum} cards found: ${count}`, "run");
           if (!cards || count === 0) {
-            this.logStep("INFO", `PAGE ${p} no product cards found.`, "run");
+            this.logStep(
+              "INFO",
+              `PAGE ${pageNum} no product cards found.`,
+              "run",
+            );
             break;
           }
 
@@ -926,11 +930,15 @@ export class AutomationEngine {
           );
           const nonAdCards = cards.filter({ hasNot: adMarker });
           const nonAdCount = await nonAdCards.count().catch(() => 0);
-          this.logStep("DEBUG", `PAGE ${p} non-ad cards: ${nonAdCount}`, "run");
+          this.logStep(
+            "DEBUG",
+            `PAGE ${pageNum} non-ad cards: ${nonAdCount}`,
+            "run",
+          );
           if (nonAdCount === 0) {
             this.logStep(
               "INFO",
-              `PAGE ${p} no non-ad product cards found.`,
+              `PAGE ${pageNum} no non-ad product cards found.`,
               "run",
             );
             break;
@@ -940,7 +948,7 @@ export class AutomationEngine {
             const cardNumber = i + 1;
             this.logStep(
               "INFO",
-              `PAGE ${p} processing card #${cardNumber}`,
+              `PAGE ${pageNum} processing card #${cardNumber}`,
               "run",
             );
             const cardVisible = await this.safeExecute(
@@ -951,7 +959,7 @@ export class AutomationEngine {
             if (!cardVisible) {
               this.logStep(
                 "SKIP",
-                `PAGE ${p} card #${cardNumber} skipped: not visible`,
+                `PAGE ${pageNum} card #${cardNumber} skipped: not visible`,
                 "run",
               );
               continue;
@@ -959,7 +967,7 @@ export class AutomationEngine {
             if (await this.isAdCard(card)) {
               this.logStep(
                 "SKIP",
-                `PAGE ${p} card #${cardNumber} skipped: AD detected`,
+                `PAGE ${pageNum} card #${cardNumber} skipped: AD detected`,
                 "run",
               );
               continue;
@@ -969,14 +977,14 @@ export class AutomationEngine {
             if (!name) {
               this.logStep(
                 "SKIP",
-                `PAGE ${p} card #${cardNumber} skipped: missing title`,
+                `PAGE ${pageNum} card #${cardNumber} skipped: missing title`,
                 "run",
               );
               continue;
             }
             this.logStep(
               "DEBUG",
-              `PAGE ${p} card #${cardNumber} title: "${name}"`,
+              `PAGE ${pageNum} card #${cardNumber} title: "${name}"`,
               "run",
             );
             const nameMatches = name
@@ -985,16 +993,16 @@ export class AutomationEngine {
             if (nameMatches) {
               this.logStep(
                 "SUCCESS",
-                `PAGE ${p} card #${cardNumber} matched target (name contains "${targetFragment}")`,
+                `PAGE ${pageNum} card #${cardNumber} matched target (name contains "${targetFragment}")`,
                 "run",
               );
-              this.emitResult(task, p, cardNumber);
+              this.emitResult(task, pageNum, cardNumber);
               await Humanizer.move(page, card);
               await Humanizer.wait(400, 800);
 
               this.logStep(
                 "ACTION",
-                `PAGE ${p} clicking card #${cardNumber}`,
+                `PAGE ${pageNum} clicking card #${cardNumber}`,
                 "run",
               );
               const [np] = await Promise.all([
@@ -1060,7 +1068,7 @@ export class AutomationEngine {
             } else {
               this.logStep(
                 "SKIP",
-                `PAGE ${p} card #${cardNumber} skipped: no match to "${targetFragment}"`,
+                `PAGE ${pageNum} card #${cardNumber} skipped: no match to "${targetFragment}"`,
                 "run",
               );
             }
@@ -1083,13 +1091,17 @@ export class AutomationEngine {
             if (isVisible) {
               await Humanizer.move(page, next);
               try {
-                this.logStep("ACTION", `PAGE ${p} clicking next page`, "run");
+                this.logStep(
+                  "ACTION",
+                  `PAGE ${pageNum} clicking next page`,
+                  "run",
+                );
                 await next.click();
                 await page.waitForLoadState("domcontentloaded", {
                   timeout: 30000,
                 });
                 await Humanizer.wait(1500, 3000);
-                this.logStep("INFO", `PAGE ${p + 1} loaded`, "run");
+                this.logStep("INFO", `PAGE ${pageNum + 1} loaded`, "run");
                 nextOk = true;
                 break;
               } catch (error) {
@@ -1106,7 +1118,7 @@ export class AutomationEngine {
           if (!nextOk) {
             this.logStep(
               "INFO",
-              `PAGE ${p} no next page button found. Stopping pagination.`,
+              `PAGE ${pageNum} no next page button found. Stopping pagination.`,
               "run",
             );
             break;
