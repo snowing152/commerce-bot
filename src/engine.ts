@@ -65,6 +65,12 @@ export class AutomationEngine {
   public onLog?: (msg: string) => void;
   public onResult?: (data: BotResult) => void;
 
+  // Utility to mask secrets before logging
+  private maskSecret(value: string): string {
+    if (value.length <= 8) return "***";
+    return `${value.slice(0, 8)}***`;
+  }
+
   // Internal logging helper
   private log(msg: string) {
     console.log(msg); // Keep console output for local debugging
@@ -169,6 +175,10 @@ export class AutomationEngine {
       return;
     }
 
+    const maskedSupabaseKey = this.maskSecret(supabaseKey);
+    const sanitizeLogText = (text: string) =>
+      text.split(supabaseKey).join(maskedSupabaseKey).slice(0, 200);
+
     const keyRole = this.getSupabaseKeyRole(supabaseKey);
     if (keyRole === "service_role" && !allowServiceRole) {
       this.logStep(
@@ -200,11 +210,12 @@ export class AutomationEngine {
       });
 
       if (!response.ok) {
-        const errorText = await response.text().catch(() => "");
+        const rawError = await response.text().catch(() => "");
+        const safeError = sanitizeLogText(rawError);
         await this.writeNotFoundFallback(record, `supabase_${response.status}`);
         this.logStep(
           "ERROR",
-          `Supabase error: ${response.status} ${errorText}`,
+          `Supabase error: ${response.status} ${safeError}`,
           "saveNotFoundToSupabase",
         );
         return;
@@ -217,9 +228,11 @@ export class AutomationEngine {
       );
     } catch (e: any) {
       await this.writeNotFoundFallback(record, "supabase_exception");
+      const rawMessage = e?.message ? String(e.message) : String(e);
+      const safeMessage = sanitizeLogText(rawMessage);
       this.logStep(
         "ERROR",
-        `Supabase exception: ${e.message}`,
+        `Supabase exception: ${safeMessage}`,
         "saveNotFoundToSupabase",
       );
     }
