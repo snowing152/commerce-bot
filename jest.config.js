@@ -6,7 +6,7 @@ module.exports = {
     "^.+\\.tsx?$": [
       "ts-jest",
       {
-        tsconfig: "tsconfig.json", // Force our compiler settings
+        tsconfig: "tsconfig.test.json", // Use test-specific compiler settings
       },
     ],
   },
