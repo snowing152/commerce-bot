@@ -46,3 +46,8 @@ coverage/
 *.tsbuildinfo
 
 config/config.json
+
+release/
+dist/
+*.exe
+win-unpacked/

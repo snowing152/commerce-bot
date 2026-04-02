@@ -1,6 +1,6 @@
 import * as patchright from "patchright";
 import { Page, Locator, Browser, BrowserContext, chromium } from "patchright";
-import { promises as fs, existsSync, appendFileSync } from "fs";
+import { promises as fs, existsSync } from "fs";
 import * as path from "path";
 import { spawn, ChildProcess } from "child_process";
 import * as os from "os";
@@ -44,7 +44,14 @@ export interface BotResult {
   location: string;
 }
 
-type LogLevel = "INFO" | "DEBUG" | "SKIP" | "ACTION" | "SUCCESS" | "ERROR";
+type LogLevel =
+  | "INFO"
+  | "DEBUG"
+  | "WARN"
+  | "SKIP"
+  | "ACTION"
+  | "SUCCESS"
+  | "ERROR";
 
 export class AutomationEngine {
   private config!: BotConfig;
@@ -56,21 +63,55 @@ export class AutomationEngine {
 
   private userDataPath: string;
   private logFilePath: string;
+  private readonly portLockFile: string;
+  private logWriteQueue: Promise<void> = Promise.resolve();
 
   constructor(userDataPath: string) {
     this.userDataPath = userDataPath;
     this.logFilePath = path.join(this.userDataPath, "bot_log.txt");
+    this.portLockFile = path.join(this.userDataPath, "debug_port.lock");
+  }
+
+  private async readPortLock(): Promise<number | null> {
+    try {
+      const raw = await fs.readFile(this.portLockFile, "utf-8");
+      const port = parseInt(raw.trim(), 10);
+      if (Number.isFinite(port) && port > 0 && port <= 65535) return port;
+    } catch (_) {
+      // Missing file is expected on first run.
+    }
+    return null;
+  }
+
+  private async writePortLock(port: number): Promise<void> {
+    try {
+      await fs.writeFile(this.portLockFile, String(port), "utf-8");
+    } catch (error) {
+      const errMessage = error instanceof Error ? error.message : String(error);
+      this.logStep(
+        "ERROR",
+        `Failed to write port lock: ${errMessage}`,
+        "writePortLock",
+      );
+    }
   }
 
   public onLog?: (msg: string) => void;
   public onResult?: (data: BotResult) => void;
 
+  // Utility to mask secrets before logging
+  private maskSecret(value: string): string {
+    if (value.length <= 8) return "***";
+    return `${value.slice(0, 8)}***`;
+  }
+
   // Internal logging helper
   private log(msg: string) {
     console.log(msg); // Keep console output for local debugging
-    try {
-      appendFileSync(this.logFilePath, `${msg}\n`, "utf-8");
-    } catch (_) {}
+    // Keep log-file writes ordered without blocking the hot path.
+    this.logWriteQueue = this.logWriteQueue
+      .then(() => fs.appendFile(this.logFilePath, `${msg}\n`, "utf-8"))
+      .catch(() => {});
     if (this.onLog) this.onLog(msg); // Forward to the UI
   }
 
@@ -169,6 +210,10 @@ export class AutomationEngine {
       return;
     }
 
+    const maskedSupabaseKey = this.maskSecret(supabaseKey);
+    const sanitizeLogText = (text: string) =>
+      text.split(supabaseKey).join(maskedSupabaseKey).slice(0, 200);
+
     const keyRole = this.getSupabaseKeyRole(supabaseKey);
     if (keyRole === "service_role" && !allowServiceRole) {
       this.logStep(
@@ -200,11 +245,12 @@ export class AutomationEngine {
       });
 
       if (!response.ok) {
-        const errorText = await response.text().catch(() => "");
+        const rawError = await response.text().catch(() => "");
+        const safeError = sanitizeLogText(rawError);
         await this.writeNotFoundFallback(record, `supabase_${response.status}`);
         this.logStep(
           "ERROR",
-          `Supabase error: ${response.status} ${errorText}`,
+          `Supabase error: ${response.status} ${safeError}`,
           "saveNotFoundToSupabase",
         );
         return;
@@ -217,9 +263,11 @@ export class AutomationEngine {
       );
     } catch (e: any) {
       await this.writeNotFoundFallback(record, "supabase_exception");
+      const rawMessage = e?.message ? String(e.message) : String(e);
+      const safeMessage = sanitizeLogText(rawMessage);
       this.logStep(
         "ERROR",
-        `Supabase exception: ${e.message}`,
+        `Supabase exception: ${safeMessage}`,
         "saveNotFoundToSupabase",
       );
     }
@@ -380,6 +428,7 @@ export class AutomationEngine {
         detached: true,
       });
       this.browserProcess = child;
+      await this.writePortLock(this.currentDebugPort);
       child.unref();
     } catch (error) {
       const errMessage = error instanceof Error ? error.message : String(error);
@@ -446,41 +495,46 @@ export class AutomationEngine {
     }
   }
 
-  private async expandAllFilters(page: Page) {
-    const moreBtns = page.locator(
-      'button:has-text("더보기"), .search-filter-options-more, .btn-more-filter',
-    );
-    // Using safeExecute to prevent silent count failures
-    const count = await this.safeExecute(
-      moreBtns.count(),
-      "counting 'more' buttons",
-      0,
+  private async expandAllFilters(root: Page | Locator) {
+    const moreBtns = root.locator(
+      'button:has-text("더보기"), .search-filter-options-more, .btn-more-filter, .filter-function-bar-list-btn:has-text("더보기")',
     );
 
-    if (count > 0) {
-      this.logStep(
-        "INFO",
-        `Found ${count} "more filters" buttons.`,
-        "expandAllFilters",
-      );
-    }
-
-    for (let i = 0; i < count; i++) {
-      const isVisible = await this.safeExecute(
-        moreBtns.nth(i).isVisible({ timeout: 500 }),
-        `checking visibility of 'more' button ${i}`,
-        false,
+    // Some sections reveal additional "+ 더보기" buttons after expansion,
+    // so do a few passes instead of a single static count.
+    for (let pass = 0; pass < 6; pass++) {
+      const count = await this.safeExecute(
+        moreBtns.count(),
+        "counting 'more' buttons",
+        0,
       );
 
-      if (isVisible) {
-        // Wrap the click action in a try/catch so one failure does not break the entire loop
+      if (count === 0) break;
+      if (pass === 0) {
+        this.logStep(
+          "INFO",
+          `Found ${count} "more filters" buttons.`,
+          "expandAllFilters",
+        );
+      }
+
+      let clickedAny = false;
+      for (let i = 0; i < count; i++) {
+        const isVisible = await this.safeExecute(
+          moreBtns.nth(i).isVisible({ timeout: 500 }),
+          `checking visibility of 'more' button ${i}`,
+          false,
+        );
+        if (!isVisible) continue;
+
         try {
           this.logStep(
             "ACTION",
             `Clicking "more filters" (${i + 1}/${count}).`,
             "expandAllFilters",
           );
-          await moreBtns.nth(i).click();
+          await moreBtns.nth(i).click({ timeout: 3000 });
+          clickedAny = true;
           await Humanizer.wait(300, 600);
         } catch (error) {
           const errMessage =
@@ -492,11 +546,23 @@ export class AutomationEngine {
           );
         }
       }
+
+      if (!clickedAny) break;
     }
   }
 
   private async applyFilters(page: Page, filters: string[]) {
     if (!filters?.length) return;
+    const clickTimeoutMs = 3500;
+    const normalizeText = (text: string) =>
+      text.normalize("NFC").replace(/\s+/g, " ").trim();
+    const escapeRegExp = (text: string) =>
+      text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    const makeExactMatcher = (text: string) => {
+      const normalized = normalizeText(text);
+      const exactWithSpaces = escapeRegExp(normalized).replace(/\s+/g, "\\s+");
+      return new RegExp(`^\\s*${exactWithSpaces}\\s*$`, "i");
+    };
     this.logStep(
       "INFO",
       `Applying filters: ${filters.join(", ")}`,
@@ -504,18 +570,136 @@ export class AutomationEngine {
     );
     await Humanizer.wait(1500, 2500);
 
-    // 1. Expand all hidden filter groups (click every "더보기" / "More" button).
-    await this.expandAllFilters(page);
-
-    // 2. Locate the filter panel so we do not click the whole page.
+    // 1. Locate the filter panel so we do not click the whole page.
     // On Coupang, filters typically live in #searchOptionForm or .search-filters.
     const filterPanel = page
-      .locator("#searchOptionForm, .search-filter-options, .search-filters")
+      .locator(
+        "#searchOptionForm, .search-filter-options, .search-filters, .filter-function-bar",
+      )
       .first();
 
+    const panelCount = await this.safeExecute(
+      filterPanel.count(),
+      "counting filter panel",
+      0,
+    );
+    const searchRoot = panelCount > 0 ? filterPanel : page;
+
+    if (panelCount === 0) {
+      this.logStep(
+        "WARN",
+        "Filter panel not found. Falling back to page-level filter search.",
+        "applyFilters",
+      );
+    }
+
+    // 2. Expand hidden filter groups within the detected filter area.
+    await this.expandAllFilters(searchRoot);
+
     for (const f of filters) {
+      // Coupang can re-fold sections after each filter application.
+      await this.expandAllFilters(searchRoot);
+      await Humanizer.wait(200, 400);
+
       let clicked = false;
       const filterLower = f.toLowerCase();
+      const matcher = makeExactMatcher(f);
+      const filterText = normalizeText(f);
+
+      if (!filterText) {
+        this.logStep("WARN", "Empty filter value. Skipping.", "applyFilters");
+        continue;
+      }
+
+      const tryClick = async (loc: Locator, label: string) => {
+        const totalCandidates = await this.safeExecute(
+          loc.count(),
+          `counting filter candidates (${label})`,
+          0,
+        );
+
+        for (let i = 0; i < Math.min(totalCandidates, 6); i++) {
+          const el = loc.nth(i);
+          const isVisible = await this.safeExecute(
+            el.isVisible({ timeout: 500 }),
+            `checking filter visibility (${label})`,
+            false,
+          );
+          if (!isVisible) continue;
+
+          const cls = (await el.getAttribute("class").catch(() => "")) || "";
+          const parentClass =
+            (await el
+              .locator("xpath=ancestor::li[1]")
+              .getAttribute("class")
+              .catch(() => "")) || "";
+          if (cls.includes("disabled") || parentClass.includes("disabled")) {
+            continue;
+          }
+
+          if (cls.includes("selected") || parentClass.includes("selected")) {
+            this.logStep(
+              "DEBUG",
+              `Filter is already selected (${label}).`,
+              "applyFilters",
+            );
+            return true;
+          }
+
+          await el.scrollIntoViewIfNeeded().catch(() => undefined);
+          await Humanizer.move(page, el);
+          let normalErr = "";
+          let forceErr = "";
+          try {
+            await el.click({ timeout: clickTimeoutMs });
+            return true;
+          } catch (error) {
+            normalErr = error instanceof Error ? error.message : String(error);
+
+            // Some filter labels toggle via the asset icon inside the label.
+            try {
+              const asset = el.locator("i.filter-function-bar-asset").first();
+              const assetVisible = await asset
+                .isVisible({ timeout: 300 })
+                .catch(() => false);
+              if (assetVisible) {
+                await asset.click({ timeout: 1000, force: true });
+                return true;
+              }
+            } catch (_) {}
+
+            // Fallback when the label is covered by sticky elements or transitions.
+            try {
+              await el.click({ timeout: 1000, force: true });
+              return true;
+            } catch (forceError) {
+              forceErr =
+                forceError instanceof Error
+                  ? forceError.message
+                  : String(forceError);
+
+              // Final fallback: invoke native click without Playwright actionability checks.
+              const nativeClicked = await el
+                .evaluate((node) => {
+                  (node as HTMLElement).click();
+                  return true;
+                })
+                .catch(() => false);
+              if (nativeClicked) {
+                return true;
+              }
+
+              this.logStep(
+                "DEBUG",
+                `Failed to click filter (${label}). normal="${normalErr}" force="${forceErr}"`,
+                "applyFilters",
+              );
+            }
+          }
+        }
+
+        return false;
+      };
 
       // STEP 1: Check hardcoded/system filters (Delivery, Availability).
       // These are often icon-based or complex, so we use explicit locators.
@@ -523,114 +707,91 @@ export class AutomationEngine {
         filterLower.includes("품절") ||
         filterLower.includes("out of stock")
       ) {
-        const el = page
+        const el = searchRoot
           .locator(
             "label.search-filter-exclude-out-of-stock, input#outOfStockProduct + label",
           )
           .first();
-        const isVisible = await this.safeExecute(
-          el.isVisible({ timeout: 1500 }),
-          "checking filter visibility (out of stock)",
-          false,
-        );
-        if (isVisible) {
-          try {
-            await el.click();
-            clicked = true;
-          } catch (error) {
-            const errMessage =
-              error instanceof Error ? error.message : String(error);
-            this.logStep(
-              "ERROR",
-              `Failed to click filter element (out of stock): ${errMessage}`,
-              "applyFilters",
-            );
-          }
-        }
+        clicked = await tryClick(el, "out of stock");
       } else if (
         filterLower.includes("rocket") ||
         filterLower.includes("로켓")
       ) {
-        const el = page.locator('label[data-component-name*="rocket"]').first();
-        const isVisible = await this.safeExecute(
-          el.isVisible({ timeout: 1500 }),
-          "checking filter visibility (rocket)",
-          false,
+        const el = searchRoot
+          .locator('label[data-component-name*="deliveryFilterOption-rocket"]')
+          .first();
+        clicked = await tryClick(el, "rocket");
+      } else if (
+        filterLower.includes("무료배송") ||
+        filterLower.includes("free shipping")
+      ) {
+        const el = searchRoot
+          .locator('label[data-component-name*="deliveryFilterOption-free"]')
+          .first();
+        clicked = await tryClick(el, "free shipping");
+      } else if (
+        filterLower.includes("새 상품") ||
+        filterLower.includes("new product")
+      ) {
+        const el = searchRoot
+          .locator(".filter-function-bar-attribute label:not(.disabled)", {
+            hasText: /^\s*새\s*상품\s*$/,
+          })
+          .first();
+        clicked = await tryClick(el, "new product");
+      }
+
+      if (clicked) {
+        this.logStep(
+          "SUCCESS",
+          `Filter found and applied: "${f}"`,
+          "applyFilters",
         );
-        if (isVisible) {
-          try {
-            await el.click();
-            clicked = true;
-          } catch (error) {
-            const errMessage =
-              error instanceof Error ? error.message : String(error);
-            this.logStep(
-              "ERROR",
-              `Failed to click filter element (rocket): ${errMessage}`,
-              "applyFilters",
-            );
-          }
-        }
       }
 
       // STEP 2: Dynamic/semantic search (sizes, brands, colors, materials, ratings).
       if (!clicked) {
-        // If the filter panel is missing (layout changed), search the whole page.
-        const panelVisible = await this.safeExecute(
-          filterPanel.isVisible(),
-          "checking filter panel visibility",
-          false,
-        );
-        const searchRoot = panelVisible ? filterPanel : page;
-
-        // Use text-based locators to find elements that include the user-provided text.
         const textLocators = [
-          searchRoot.locator(`label:has-text("${f}")`),
-          searchRoot.locator(`a:has-text("${f}")`),
-          searchRoot.locator(`button:has-text("${f}")`),
-          searchRoot.locator(`span:has-text("${f}")`),
+          searchRoot
+            .locator(".filter-function-bar-attribute label:not(.disabled)")
+            .filter({ hasText: matcher }),
+          searchRoot
+            .locator(".filter-function-bar-rating label:not(.disabled)")
+            .filter({ hasText: matcher }),
+          searchRoot
+            .locator(".filter-function-bar-category a")
+            .filter({ hasText: matcher }),
+          searchRoot
+            .locator("label:not(.disabled)")
+            .filter({ hasText: matcher }),
+          searchRoot.locator("a").filter({ hasText: matcher }),
+          searchRoot.locator("button").filter({ hasText: matcher }),
         ];
 
         for (const loc of textLocators) {
-          // Take the first visible match.
-          const el = loc.first();
-          const isVisible = await this.safeExecute(
-            el.isVisible({ timeout: 1000 }),
-            `checking filter visibility for "${f}"`,
-            false,
-          );
-          if (isVisible) {
-            await Humanizer.move(page, el);
-            try {
-              await el.click();
-              clicked = true;
-              this.logStep(
-                "SUCCESS",
-                `Filter found and applied: "${f}"`,
-                "applyFilters",
-              );
-              break; // Exit the locator loop
-            } catch (error) {
-              const errMessage =
-                error instanceof Error ? error.message : String(error);
-              this.logStep(
-                "ERROR",
-                `Failed to click filter element: ${errMessage}`,
-                "applyFilters",
-              );
-            }
+          const clickedHere = await tryClick(loc, "text");
+          if (clickedHere) {
+            clicked = true;
+            this.logStep(
+              "SUCCESS",
+              `Filter found and applied: "${f}"`,
+              "applyFilters",
+            );
+            break;
           }
         }
       }
 
       // Wait for the product list to reload after a click.
       if (clicked) {
-        await page.waitForLoadState("domcontentloaded", { timeout: 15000 });
+        await page
+          .waitForLoadState("domcontentloaded", { timeout: 5000 })
+          .catch(() => undefined);
         await Humanizer.wait(1500, 2500);
       } else {
         this.logStep(
-          "DEBUG",
-          `Filter not found: "${f}". It may be missing in this category.`,
+          "WARN",
+          `Filter not found: "${f}". Skipping.`,
           "applyFilters",
         );
       }
@@ -698,6 +859,16 @@ export class AutomationEngine {
       await fs.mkdir(shots, { recursive: true });
     }
 
+    const savedPort = await this.readPortLock();
+    if (savedPort !== null) {
+      this.currentDebugPort = savedPort;
+      this.logStep(
+        "INFO",
+        `Restored debug port from lock file: ${this.currentDebugPort}`,
+        "run",
+      );
+    }
+
     this.logStep(
       "INFO",
       `Checking debug port ${this.currentDebugPort}...`,
@@ -726,10 +897,24 @@ export class AutomationEngine {
     }
 
     const contexts = browser.contexts();
-    const ctx: BrowserContext =
-      contexts.find((c) => c.pages().length > 0) || contexts[0];
+    const ctx: BrowserContext | undefined =
+      contexts.find((c) => c.pages().length > 0) ?? contexts[0];
+
+    if (!ctx) {
+      await browser.close();
+      throw new Error(
+        "No browser context available. The browser may have launched but not initialized yet.",
+      );
+    }
 
     const pages: Page[] = ctx.pages();
+    if (pages.length === 0) {
+      this.logStep(
+        "WARN",
+        "No existing pages in context. Opening a new tab.",
+        "run",
+      );
+    }
     let page: Page | undefined =
       pages.find((p: Page) => p.url().includes("coupang.com")) || pages[0];
 
@@ -765,8 +950,43 @@ export class AutomationEngine {
     await Humanizer.randomMove(page);
     await Humanizer.wait(800, 1500);
 
+    const recoverPageIfClosed = async (): Promise<boolean> => {
+      if (page && !page.isClosed()) return true;
+
+      const replacement =
+        ctx
+          .pages()
+          .find((p) => !p.isClosed() && p.url().includes("coupang.com")) ||
+        ctx.pages().find((p) => !p.isClosed());
+
+      if (!replacement) {
+        this.logStep(
+          "ERROR",
+          "All browser pages are closed. Stopping run.",
+          "run",
+        );
+        return false;
+      }
+
+      page = replacement;
+      await page.bringToFront().catch(() => undefined);
+      this.logStep(
+        "WARN",
+        "Active page was closed. Switched to another open page.",
+        "run",
+      );
+      return true;
+    };
+
     try {
+      let shouldStopRun = false;
       for (const task of this.config.tasks) {
+        if (shouldStopRun) break;
+        if (!(await recoverPageIfClosed())) {
+          shouldStopRun = true;
+          break;
+        }
+
         const searchStartedAt = Date.now();
         let lastPageReached = 0;
         let cardsScanned = 0;
@@ -832,40 +1052,41 @@ export class AutomationEngine {
           "run",
         );
 
-        for (let p = 1; p <= maxP; p++) {
-          lastPageReached = p;
-          this.logStep("INFO", `PAGE ${p}/${maxP} scanning`, "run");
+        for (let pageNum = 1; pageNum <= maxP; pageNum++) {
+          if (!(await recoverPageIfClosed())) {
+            shouldStopRun = true;
+            break;
+          }
+
+          lastPageReached = pageNum;
+          this.logStep("INFO", `PAGE ${pageNum}/${maxP} scanning`, "run");
           await page.evaluate(() => window.scrollBy(0, 400));
           await Humanizer.wait(600, 1400);
           await Humanizer.randomMove(page);
 
           const { loc: cards, count } = await this.findCards(page);
-          this.logStep("INFO", `PAGE ${p} cards found: ${count}`, "findCards");
+          this.logStep("INFO", `PAGE ${pageNum} cards found: ${count}`, "run");
           if (!cards || count === 0) {
-            this.logStep("INFO", `PAGE ${p} no product cards found.`, "run");
-            break;
-          }
-
-          const adMarker = page.locator(
-            'span:has-text("AD"), [class*="AdMark"]',
-          );
-          const nonAdCards = cards.filter({ hasNot: adMarker });
-          const nonAdCount = await nonAdCards.count().catch(() => 0);
-          this.logStep("DEBUG", `PAGE ${p} non-ad cards: ${nonAdCount}`, "run");
-          if (nonAdCount === 0) {
             this.logStep(
               "INFO",
-              `PAGE ${p} no non-ad product cards found.`,
+              `PAGE ${pageNum} no product cards found.`,
               "run",
             );
             break;
           }
-          for (let i = 0; i < nonAdCount; i++) {
-            const card = nonAdCards.nth(i);
+
+          let nonAdCount = 0;
+          for (let i = 0; i < count; i++) {
+            if (!(await recoverPageIfClosed())) {
+              shouldStopRun = true;
+              break;
+            }
+
+            const card = cards.nth(i);
             const cardNumber = i + 1;
             this.logStep(
               "INFO",
-              `PAGE ${p} processing card #${cardNumber}`,
+              `PAGE ${pageNum} processing card #${cardNumber}`,
               "run",
             );
             const cardVisible = await this.safeExecute(
@@ -876,7 +1097,7 @@ export class AutomationEngine {
             if (!cardVisible) {
               this.logStep(
                 "SKIP",
-                `PAGE ${p} card #${cardNumber} skipped: not visible`,
+                `PAGE ${pageNum} card #${cardNumber} skipped: not visible`,
                 "run",
               );
               continue;
@@ -884,24 +1105,25 @@ export class AutomationEngine {
             if (await this.isAdCard(card)) {
               this.logStep(
                 "SKIP",
-                `PAGE ${p} card #${cardNumber} skipped: AD detected`,
+                `PAGE ${pageNum} card #${cardNumber} skipped: AD detected`,
                 "run",
               );
               continue;
             }
+            nonAdCount += 1;
             cardsScanned += 1;
             const name = await this.getName(card);
             if (!name) {
               this.logStep(
                 "SKIP",
-                `PAGE ${p} card #${cardNumber} skipped: missing title`,
+                `PAGE ${pageNum} card #${cardNumber} skipped: missing title`,
                 "run",
               );
               continue;
             }
             this.logStep(
               "DEBUG",
-              `PAGE ${p} card #${cardNumber} title: "${name}"`,
+              `PAGE ${pageNum} card #${cardNumber} title: "${name}"`,
               "run",
             );
             const nameMatches = name
@@ -910,16 +1132,16 @@ export class AutomationEngine {
             if (nameMatches) {
               this.logStep(
                 "SUCCESS",
-                `PAGE ${p} card #${cardNumber} matched target (name contains "${targetFragment}")`,
+                `PAGE ${pageNum} card #${cardNumber} matched target (name contains "${targetFragment}")`,
                 "run",
               );
-              this.emitResult(task, p, cardNumber);
+              this.emitResult(task, pageNum, cardNumber);
               await Humanizer.move(page, card);
               await Humanizer.wait(400, 800);
 
               this.logStep(
                 "ACTION",
-                `PAGE ${p} clicking card #${cardNumber}`,
+                `PAGE ${pageNum} clicking card #${cardNumber}`,
                 "run",
               );
               const [np] = await Promise.all([
@@ -985,11 +1207,25 @@ export class AutomationEngine {
             } else {
               this.logStep(
                 "SKIP",
-                `PAGE ${p} card #${cardNumber} skipped: no match to "${targetFragment}"`,
+                `PAGE ${pageNum} card #${cardNumber} skipped: no match to "${targetFragment}"`,
                 "run",
               );
             }
           }
+          this.logStep(
+            "DEBUG",
+            `PAGE ${pageNum} non-ad cards: ${nonAdCount}`,
+            "run",
+          );
+          if (nonAdCount === 0) {
+            this.logStep(
+              "INFO",
+              `PAGE ${pageNum} no non-ad product cards found.`,
+              "run",
+            );
+            break;
+          }
+          if (shouldStopRun) break;
           if (found) break;
 
           let nextOk = false;
@@ -1008,13 +1244,17 @@ export class AutomationEngine {
             if (isVisible) {
               await Humanizer.move(page, next);
               try {
-                this.logStep("ACTION", `PAGE ${p} clicking next page`, "run");
+                this.logStep(
+                  "ACTION",
+                  `PAGE ${pageNum} clicking next page`,
+                  "run",
+                );
                 await next.click();
                 await page.waitForLoadState("domcontentloaded", {
                   timeout: 30000,
                 });
                 await Humanizer.wait(1500, 3000);
-                this.logStep("INFO", `PAGE ${p + 1} loaded`, "run");
+                this.logStep("INFO", `PAGE ${pageNum + 1} loaded`, "run");
                 nextOk = true;
                 break;
               } catch (error) {
@@ -1031,12 +1271,14 @@ export class AutomationEngine {
           if (!nextOk) {
             this.logStep(
               "INFO",
-              `PAGE ${p} no next page button found. Stopping pagination.`,
+              `PAGE ${pageNum} no next page button found. Stopping pagination.`,
               "run",
             );
             break;
           }
         }
+
+        if (shouldStopRun) break;
 
         if (!found) {
           this.logStep(
@@ -1062,6 +1304,24 @@ export class AutomationEngine {
         const pause = Math.floor(Math.random() * 6 + 5);
         this.logStep("DEBUG", `Pausing ${pause}s before next task.`, "run");
         await Humanizer.wait(pause * 1000, pause * 1000 + 4000);
+      }
+
+      if (shouldStopRun) {
+        this.logStep(
+          "WARN",
+          "Run stopped early due closed pages. Skipping cart step.",
+          "run",
+        );
+        return null;
+      }
+
+      if (!(await recoverPageIfClosed())) {
+        this.logStep(
+          "WARN",
+          "No active page before cart step. Skipping cart page.",
+          "run",
+        );
+        return null;
       }
 
       this.logStep("INFO", "Opening cart page.", "run");
