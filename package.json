@@ -4,18 +4,25 @@
   "main": "dist/main.js",
   "scripts": {
     "clean": "node -e \"const fs = require('fs'); fs.rmSync('dist', { recursive: true, force: true }); fs.rmSync('release', { recursive: true, force: true });\"",
-    "build": "tsc",
+    "build": "tsc&& copyfiles -f src/*.html dist/",
     "pack": "npm run clean && npm run build && electron-builder --win --x64",
     "start": "npm run build && electron .",
     "test": "jest"
   },
   "dependencies": {
+    "@supabase/supabase-js": "^2.100.1",
+    "dotenv": "^17.3.1",
+    "electron-store": "^7.0.3",
     "electron-updater": "^6.8.3",
+    "node-telegram-bot-api": "^0.63.0",
     "patchright": "^1.58.2"
   },
   "devDependencies": {
     "@types/jest": "^30.0.0",
     "@types/node": "^20.0.0",
+    "@types/node-telegram-bot-api": "^0.64.14",
+    "concurrently": "^9.2.1",
+    "copyfiles": "^2.4.1",
     "electron": "^41.0.4",
     "electron-builder": "^26.8.1",
     "jest": "^30.3.0",
@@ -42,17 +49,28 @@
       "allowToChangeInstallationDirectory": true,
       "deleteAppDataOnUninstall": false
     },
-    "files": [
-      "dist/**/*",
-      "config/**/*",
-      "assets/**/*",
-      "src/index.html"
-    ],
     "publish": [
       {
         "provider": "github",
         "owner": "snowing152",
         "repo": "commerce-bot"
+      }
+    ],
+    "compression": "maximum",
+    "files": [
+      "dist/**/*",
+      "config/**/*",
+      "src/index.html",
+      "src/*.html"
+    ],
+    "extraFiles": [
+      {
+        "from": "src/auth.html",
+        "to": "dist/auth.html"
+      },
+      {
+        "from": "src/subscription.html",
+        "to": "dist/subscription.html"
       }
     ]
   }
