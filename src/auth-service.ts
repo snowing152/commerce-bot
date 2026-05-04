@@ -22,20 +22,22 @@ const pendingTokens = new Map<string, any>();
 export async function startTelegramAuth(): Promise<string> {
   const token = crypto.randomBytes(16).toString("hex");
 
-  await getSupabase().from("auth_tokens").insert({
-    token,
-    confirmed:  false,
-    expires_at: new Date(Date.now() + 5 * 60_000).toISOString(),
-  });
+  await getSupabase()
+    .from("auth_tokens")
+    .insert({
+      token,
+      confirmed: false,
+      expires_at: new Date(Date.now() + 5 * 60_000).toISOString(),
+    });
 
   shell.openExternal(
-    `https://t.me/${process.env.BOT_USERNAME}?start=login_${token}`
+    `https://t.me/${process.env.BOT_USERNAME}?start=login_${token}`,
   );
   return token;
 }
 
 export async function checkAuthToken(
-  token: string
+  token: string,
 ): Promise<{ success: boolean; telegramId?: number }> {
   const { data } = await getSupabase()
     .from("auth_tokens")
@@ -62,7 +64,7 @@ export async function checkAuthToken(
 
 export async function confirmAuthToken(
   token: string,
-  tgUser: any
+  tgUser: any,
 ): Promise<boolean> {
   // Check token exists and is not expired
   const { data } = await getSupabase()
@@ -82,15 +84,17 @@ export async function confirmAuthToken(
     .single();
 
   if (!existing) {
-    await getSupabase().from("users").insert({
-      telegram_id:         tgUser.id,
-      first_name:          tgUser.first_name,
-      username:            tgUser.username  || null,
-      photo_url:           tgUser.photo_url || null,
-      subscription_status: "trial",
-      trial_start:         now.toISOString(),
-      trial_end:           new Date(now.getTime() + 1 * 86400_000).toISOString(),
-    });
+    await getSupabase()
+      .from("users")
+      .insert({
+        telegram_id: tgUser.id,
+        first_name: tgUser.first_name,
+        username: tgUser.username || null,
+        photo_url: tgUser.photo_url || null,
+        subscription_status: "trial",
+        trial_start: now.toISOString(),
+        trial_end: new Date(now.getTime() + 1 * 86400_000).toISOString(),
+      });
   }
 
   // Mark token as confirmed
@@ -122,13 +126,13 @@ export async function getSubscriptionStatus(telegramId: number) {
   return {
     user: {
       first_name: data.first_name,
-      photo_url:  data.photo_url,
+      photo_url: data.photo_url,
     },
-    status:    data.live_status,
-    daysLeft:  data.days_left,
+    status: data.live_status,
+    daysLeft: data.days_left,
     trialStart: data.trial_start,
-    periodEnd:  data.period_end,
-    price:     "₩9,900",
+    periodEnd: data.period_end,
+    price: "₩9,900",
   };
 }
 
@@ -138,7 +142,10 @@ export function openPaymentBot(): void {
 }
 
 // ── Extend subscription (used by bot.ts) ────────────────────
-export async function extendSubscription(telegramId: number, days: number): Promise<void> {
+export async function extendSubscription(
+  telegramId: number,
+  days: number,
+): Promise<void> {
   const { data: user } = await getSupabase()
     .from("users")
     .select("subscription_end")
@@ -155,8 +162,8 @@ export async function extendSubscription(telegramId: number, days: number): Prom
     .from("users")
     .update({
       subscription_status: "active",
-      subscription_end:    newEnd.toISOString(),
-      updated_at:          new Date().toISOString(),
+      subscription_end: newEnd.toISOString(),
+      updated_at: new Date().toISOString(),
     })
     .eq("telegram_id", telegramId);
 }
