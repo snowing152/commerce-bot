@@ -2,5 +2,29 @@
   "search_bar": "input.headerSearchKeyword",
   "search_button": "button.headerSearchBtn",
   "add_to_cart_btn": "button.prod-cart-btn",
-  "cart_link": "#wa-cart-link"
+  "cart_link": "#wa-cart-link",
+  "filters": {
+    "panel": "#searchOptionForm, .search-filter-options, .search-filters, .filter-function-bar",
+    "expandButton": "button:has-text(\"더보기\"), .search-filter-options-more, .btn-more-filter, .filter-function-bar-list-btn:has-text(\"더보기\")",
+    "groups": {
+      "delivery":  { "root": ".filter-function-bar-delivery",  "option": "label" },
+      "brand":     { "root": ".filter-function-bar-brand",     "option": "label, a" },
+      "attribute": { "root": ".filter-function-bar-attribute", "option": "label" },
+      "category":  { "root": ".filter-function-bar-category",  "option": "a" },
+      "rating":    { "root": ".filter-function-bar-rating",    "option": "label" },
+      "price":     { "root": ".filter-function-bar-price",     "option": ".filter-function-bar-price-item" }
+    },
+    "state": {
+      "selectedClass": "selected",
+      "disabledClass": "disabled",
+      "ariaSelected":  "aria-checked",
+      "ariaDisabled":  "aria-disabled"
+    },
+    "aliases": {
+      "rocket":        ["로켓배송", "rocket delivery", "판매자로켓"],
+      "free shipping": ["무료배송"],
+      "new product":   ["새 상품", "신상품"],
+      "out of stock":  ["품절제외", "재고있음"]
+    }
+  }
 }

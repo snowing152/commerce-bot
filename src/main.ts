@@ -13,23 +13,28 @@ import Store from "electron-store";
 import * as fs from "fs";
 import { AutomationEngine } from "./engine";
 
+// BETA: skip the auth gate. Flip to false once Telegram + Supabase auth is finished.
+const BETA_SKIP_AUTH = true;
+
 // ── Auto updater (optional, graceful fallback) ──────────────
 let autoUpdater: any = null;
 try {
   autoUpdater = require("electron-updater").autoUpdater;
 } catch (error) {
   const errMessage = error instanceof Error ? error.message : String(error);
-  console.warn(`[setupAutoUpdater] electron-updater unavailable: ${errMessage}`);
+  console.warn(
+    `[setupAutoUpdater] electron-updater unavailable: ${errMessage}`,
+  );
 }
 
 // ── App paths & state ───────────────────────────────────────
-const USER_DATA_PATH       = app.getPath("userData");
+const USER_DATA_PATH = app.getPath("userData");
 let autoUpdaterInitialized = false;
 let updateRetryTimer: NodeJS.Timeout | null = null;
-let updateRetryAttempt     = 0;
+let updateRetryAttempt = 0;
 const UPDATE_RETRY_BASE_MS = 15000;
-const UPDATE_RETRY_MAX_MS  = 300000;
-const SESSION_FILE_NAME    = "saved_session.json";
+const UPDATE_RETRY_MAX_MS = 300000;
+const SESSION_FILE_NAME = "saved_session.json";
 
 // ── Store (typed) ───────────────────────────────────────────
 interface StoreSchema {
@@ -86,7 +91,7 @@ function escapeMarkdownV2(text: string) {
 
 ipcMain.handle("send-log-telegram", async () => {
   try {
-    const userConfigPath    = path.join(USER_DATA_PATH, "config.json");
+    const userConfigPath = path.join(USER_DATA_PATH, "config.json");
     const defaultConfigPath = path.join(__dirname, "../config/config.json");
     let configRaw: string | null = null;
 
@@ -109,24 +114,24 @@ ipcMain.handle("send-log-telegram", async () => {
       throw new Error("Файл логов ещё не создан.");
     }
 
-    const logContent  = fs.readFileSync(logPath, "utf-8");
-    const textToSend  = logContent.length > 4000
-      ? "... " + logContent.slice(-3900)
-      : logContent;
+    const logContent = fs.readFileSync(logPath, "utf-8");
+    const textToSend =
+      logContent.length > 4000 ? "... " + logContent.slice(-3900) : logContent;
     const escapedText = escapeMarkdownV2(textToSend);
 
-    const url      = `https://api.telegram.org/bot${bot_token}/sendMessage`;
+    const url = `https://api.telegram.org/bot${bot_token}/sendMessage`;
     const response = await fetch(url, {
-      method:  "POST",
+      method: "POST",
       headers: { "Content-Type": "application/json" },
-      body:    JSON.stringify({
+      body: JSON.stringify({
         chat_id,
-        text:       `🤖 *Coupang Bot Logs:*\n\n\`\`\`text\n${escapedText}\n\`\`\``,
+        text: `🤖 *Coupang Bot Logs:*\n\n\`\`\`text\n${escapedText}\n\`\`\``,
         parse_mode: "MarkdownV2",
       }),
     });
 
-    if (!response.ok) throw new Error("Telegram API error: " + response.statusText);
+    if (!response.ok)
+      throw new Error("Telegram API error: " + response.statusText);
     return { success: true };
   } catch (error) {
     const errMessage = error instanceof Error ? error.message : String(error);
@@ -150,9 +155,9 @@ ipcMain.handle("logout", () => {
 
 ipcMain.handle("navigate-to", (_, page: "auth" | "subscription" | "main") => {
   const pages: Record<string, string> = {
-    auth:         "auth.html",
+    auth: "auth.html",
     subscription: "subscription.html",
-    main:         "index.html",
+    main: "index.html",
   };
   win.loadFile(path.join(__dirname, pages[page]));
 });
@@ -169,18 +174,29 @@ ipcMain.handle("check-auth-token", async (_, token: string) => {
   return result;
 });
 
+ipcMain.handle("clear-chrome-debug-profile", async () => {
+  const profilePath = path.join(USER_DATA_PATH, "chrome_debug_profile");
+  try {
+    await fs.promises.rm(profilePath, { recursive: true, force: true });
+    return { success: true, path: profilePath };
+  } catch (error) {
+    const errMessage = error instanceof Error ? error.message : String(error);
+    return { success: false, path: profilePath, error: errMessage };
+  }
+});
+
 // ── Bot runner ───────────────────────────────────────────────
 ipcMain.on("start-bot", async (event, tasksArray) => {
   try {
     const configPath = path.join(USER_DATA_PATH, "config.json");
-    const rawConfig  = fs.readFileSync(configPath, "utf-8");
-    const config     = JSON.parse(rawConfig);
+    const rawConfig = fs.readFileSync(configPath, "utf-8");
+    const config = JSON.parse(rawConfig);
 
     config.tasks = tasksArray;
     fs.writeFileSync(configPath, JSON.stringify(config, null, 2));
 
-    const engine    = new AutomationEngine(USER_DATA_PATH);
-    engine.onLog    = (msg)  => event.reply("bot-log", msg);
+    const engine = new AutomationEngine(USER_DATA_PATH);
+    engine.onLog = (msg) => event.reply("bot-log", msg);
     engine.onResult = (data) => {
       if (!event.sender.isDestroyed()) event.reply("bot-result", data);
     };
@@ -188,7 +204,7 @@ ipcMain.on("start-bot", async (event, tasksArray) => {
     const screenshotPath = await engine.run();
     event.reply("bot-done", screenshotPath);
   } catch (error: any) {
-    event.reply("bot-log",  `[КРИТИЧЕСКАЯ ОШИБКА] ${error.message}`);
+    event.reply("bot-log", `[КРИТИЧЕСКАЯ ОШИБКА] ${error.message}`);
     event.reply("bot-done", null);
   }
 });
@@ -202,9 +218,9 @@ ipcMain.on("open-path", (_event, p) => {
 // ═══════════════════════════════════════════════════════════
 
 function setupUserFiles() {
-  const configDest   = path.join(USER_DATA_PATH, "config.json");
+  const configDest = path.join(USER_DATA_PATH, "config.json");
   const selectorsDest = path.join(USER_DATA_PATH, "selectors.json");
-  const configSrc    = path.join(__dirname, "../config/config.json");
+  const configSrc = path.join(__dirname, "../config/config.json");
   const selectorsSrc = path.join(__dirname, "../config/selectors.json");
 
   try {
@@ -216,7 +232,7 @@ function setupUserFiles() {
     } else {
       try {
         const defaultConfig = JSON.parse(fs.readFileSync(configSrc, "utf-8"));
-        const userConfig    = JSON.parse(fs.readFileSync(configDest, "utf-8"));
+        const userConfig = JSON.parse(fs.readFileSync(configDest, "utf-8"));
 
         const merged = {
           settings: {
@@ -224,7 +240,7 @@ function setupUserFiles() {
             browser_path: userConfig.settings?.browser_path ?? "",
           },
           telegram: { ...defaultConfig.telegram },
-          tasks:    Array.isArray(userConfig.tasks)
+          tasks: Array.isArray(userConfig.tasks)
             ? userConfig.tasks
             : defaultConfig.tasks,
         };
@@ -232,7 +248,10 @@ function setupUserFiles() {
         fs.writeFileSync(configDest, JSON.stringify(merged, null, 2), "utf-8");
         console.log("[setupUserFiles] Config updated from new build.");
       } catch (error) {
-        console.warn("[setupUserFiles] Failed to merge config, keeping existing:", error);
+        console.warn(
+          "[setupUserFiles] Failed to merge config, keeping existing:",
+          error,
+        );
       }
     }
 
@@ -250,28 +269,32 @@ function setupUserFiles() {
 
 async function createWindow() {
   win = new BrowserWindow({
-    width:           550,
-    height:          650,
+    width: 550,
+    height: 650,
     autoHideMenuBar: true,
-    icon:            path.join(__dirname, "../assets/icon.ico"),
+    icon: path.join(__dirname, "../assets/icon.ico"),
     webPreferences: {
-      preload:          path.join(__dirname, "preload.js"),
-      nodeIntegration:  false,
+      preload: path.join(__dirname, "preload.js"),
+      nodeIntegration: false,
       contextIsolation: true,
     },
   });
 
-  const telegramId = store.get("telegram_id");
-
-  if (!telegramId) {
-    loadPage("auth.html");
+  if (BETA_SKIP_AUTH) {
+    loadPage("index.html");
   } else {
-    try {
-      const { status } = await getSubscriptionStatus(telegramId);
-      loadPage(status === "expired" ? "subscription.html" : "index.html");
-    } catch {
-      store.delete("telegram_id");
+    const telegramId = store.get("telegram_id");
+
+    if (!telegramId) {
       loadPage("auth.html");
+    } else {
+      try {
+        const { status } = await getSubscriptionStatus(telegramId);
+        loadPage(status === "expired" ? "subscription.html" : "index.html");
+      } catch {
+        store.delete("telegram_id");
+        loadPage("auth.html");
+      }
     }
   }
 
@@ -294,7 +317,10 @@ function setupAutoUpdater(win: BrowserWindow) {
   autoUpdaterInitialized = true;
 
   if (!app.isPackaged) {
-    win.webContents.send("update-status", "Автообновление доступно только в собранной версии.");
+    win.webContents.send(
+      "update-status",
+      "Автообновление доступно только в собранной версии.",
+    );
     return;
   }
 
@@ -312,13 +338,17 @@ function setupAutoUpdater(win: BrowserWindow) {
     retryInSec: number | null,
     attempt: number | null,
   ) => {
-    if (!win.isDestroyed()) win.webContents.send("update-error", { message, retryInSec, attempt });
+    if (!win.isDestroyed())
+      win.webContents.send("update-error", { message, retryInSec, attempt });
   };
   const clearUpdateError = () => sendUpdateError(null, null, null);
 
   const scheduleRetry = (message: string) => {
     updateRetryAttempt += 1;
-    const delay      = Math.min(UPDATE_RETRY_MAX_MS, UPDATE_RETRY_BASE_MS * Math.pow(2, updateRetryAttempt - 1));
+    const delay = Math.min(
+      UPDATE_RETRY_MAX_MS,
+      UPDATE_RETRY_BASE_MS * Math.pow(2, updateRetryAttempt - 1),
+    );
     const retryInSec = Math.ceil(delay / 1000);
 
     if (updateRetryTimer) clearTimeout(updateRetryTimer);
@@ -334,7 +364,7 @@ function setupAutoUpdater(win: BrowserWindow) {
     }, delay);
   };
 
-  autoUpdater.autoDownload        = true;
+  autoUpdater.autoDownload = true;
   autoUpdater.autoInstallOnAppQuit = true;
 
   autoUpdater.on("checking-for-update", () => {
