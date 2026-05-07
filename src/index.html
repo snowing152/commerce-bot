@@ -418,8 +418,9 @@
         const container = document.getElementById("tasksContainer");
         container.innerHTML = "";
 
+        let html = "";
         for (let i = 1; i <= count; i++) {
-          container.innerHTML += `
+          html += `
                     <div class="task-block">
                         <h3>Товар #${i}</h3>
                         <label>Ключевое слово (keyword):</label>
@@ -438,6 +439,7 @@
                     </div>
                 `;
         }
+        container.innerHTML = html;
 
         for (let i = 1; i <= count; i++) {
           const saved = savedTasks[i - 1];
