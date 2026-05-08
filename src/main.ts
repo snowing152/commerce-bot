@@ -1,6 +1,6 @@
 import * as path from "path";
 
-import { app, BrowserWindow, ipcMain, shell } from "electron";
+import { app, BrowserWindow, dialog, ipcMain, shell } from "electron";
 import {
   getSubscriptionStatus,
   openPaymentBot,
@@ -29,7 +29,10 @@ let updateRetryTimer: NodeJS.Timeout | null = null;
 let updateRetryAttempt = 0;
 const UPDATE_RETRY_BASE_MS = 15000;
 const UPDATE_RETRY_MAX_MS = 300000;
+const UPDATE_RETRY_MAX_ATTEMPTS = 10; // 2^9 * 15s >> 5min cap; stops the exponent growing unbounded
 const SESSION_FILE_NAME = "saved_session.json";
+const RESULTS_FILE_NAME = "saved_results.json";
+const MAX_PERSISTED_RESULTS = 500;
 
 // ── Store (typed) ───────────────────────────────────────────
 interface StoreSchema {
@@ -73,6 +76,76 @@ ipcMain.handle("save-session", async (_event, data) => {
   }
 });
 
+function loadSavedResults(): any[] {
+  try {
+    const p = path.join(USER_DATA_PATH, RESULTS_FILE_NAME);
+    if (!fs.existsSync(p)) return [];
+    const parsed = JSON.parse(fs.readFileSync(p, "utf-8"));
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
+}
+
+function persistResults(results: any[]): void {
+  try {
+    const trimmed =
+      results.length > MAX_PERSISTED_RESULTS
+        ? results.slice(-MAX_PERSISTED_RESULTS)
+        : results;
+    fs.writeFileSync(
+      path.join(USER_DATA_PATH, RESULTS_FILE_NAME),
+      JSON.stringify(trimmed, null, 2),
+      "utf-8",
+    );
+  } catch (error) {
+    console.error("Failed to persist results:", error);
+  }
+}
+
+ipcMain.handle("load-results", () => loadSavedResults());
+
+ipcMain.handle("clear-results", async () => {
+  try {
+    const p = path.join(USER_DATA_PATH, RESULTS_FILE_NAME);
+    if (fs.existsSync(p)) fs.unlinkSync(p);
+    return { success: true };
+  } catch (error) {
+    const errMessage = error instanceof Error ? error.message : String(error);
+    return { success: false, error: errMessage };
+  }
+});
+
+ipcMain.handle("export-results-csv", async () => {
+  try {
+    const results = loadSavedResults();
+    if (results.length === 0) return { success: false, error: "No results to export." };
+
+    const { filePath, canceled } = await dialog.showSaveDialog({
+      title: "Export results",
+      defaultPath: `coupang-results-${new Date().toISOString().slice(0, 10)}.csv`,
+      filters: [{ name: "CSV files", extensions: ["csv"] }],
+    });
+    if (canceled || !filePath) return { success: false };
+
+    const header = "#,Run,Date,Keyword,Product,Location\n";
+    const rows = results.map((r: any) => [
+      r.id ?? "",
+      r.run_id ?? "",
+      `"${(r.date ?? "").replace(/"/g, '""')}"`,
+      `"${(r.keyword ?? "").replace(/"/g, '""')}"`,
+      `"${(r.targetName ?? "").replace(/"/g, '""')}"`,
+      `"${(r.location ?? "").replace(/"/g, '""')}"`,
+    ].join(",")).join("\n");
+
+    fs.writeFileSync(filePath, header + rows, "utf-8");
+    return { success: true, path: filePath };
+  } catch (error) {
+    const errMessage = error instanceof Error ? error.message : String(error);
+    return { success: false, error: errMessage };
+  }
+});
+
 ipcMain.handle("load-session", async () => {
   try {
     const sessionPath = path.join(USER_DATA_PATH, SESSION_FILE_NAME);
@@ -93,22 +166,12 @@ function escapeMarkdownV2(text: string) {
 
 ipcMain.handle("send-log-telegram", async () => {
   try {
-    const userConfigPath = path.join(USER_DATA_PATH, "config.json");
-    const defaultConfigPath = path.join(__dirname, "../config/config.json");
-    let configRaw: string | null = null;
-
-    if (fs.existsSync(userConfigPath)) {
-      configRaw = fs.readFileSync(userConfigPath, "utf-8");
-    } else if (fs.existsSync(defaultConfigPath)) {
-      configRaw = fs.readFileSync(defaultConfigPath, "utf-8");
-    }
-
-    if (!configRaw) throw new Error("config.json not found");
-
-    const config = JSON.parse(configRaw);
-    const { bot_token, chat_id } = config.telegram || {};
+    const bot_token = process.env.TELEGRAM_BOT_TOKEN;
+    const chat_id = process.env.TELEGRAM_LOG_CHAT_ID;
     if (!bot_token || !chat_id) {
-      throw new Error("Telegram token or chat_id is missing in config.json");
+      throw new Error(
+        "Telegram log channel not configured (set TELEGRAM_BOT_TOKEN and TELEGRAM_LOG_CHAT_ID at build time)",
+      );
     }
 
     const logPath = path.join(USER_DATA_PATH, "bot_log.txt");
@@ -155,13 +218,28 @@ ipcMain.handle("logout", () => {
   store.delete("session");
 });
 
-ipcMain.handle("navigate-to", (_, page: "auth" | "subscription" | "main") => {
-  const pages: Record<string, string> = {
-    auth: "auth.html",
-    subscription: "subscription.html",
-    main: "index.html",
-  };
-  loadPage(pages[page]);
+async function resolveMainRoute(telegramId: number): Promise<string> {
+  try {
+    const { status } = await getSubscriptionStatus(telegramId);
+    return status === "expired" ? "subscription.html" : "index.html";
+  } catch {
+    // Backend hiccup mid-session: route to subscription page (which surfaces
+    // its own error state) rather than to the dashboard or logging out.
+    return "subscription.html";
+  }
+}
+
+ipcMain.handle("navigate-to", async (_, page: "auth" | "subscription" | "main") => {
+  if (page === "main") {
+    const tid = store.get("telegram_id");
+    if (!tid) {
+      loadPage("auth.html");
+      return;
+    }
+    loadPage(await resolveMainRoute(tid));
+    return;
+  }
+  loadPage(page === "auth" ? "auth.html" : "subscription.html");
 });
 
 ipcMain.handle("start-telegram-auth", async () => {
@@ -188,27 +266,60 @@ ipcMain.handle("clear-chrome-debug-profile", async () => {
 });
 
 // ── Bot runner ───────────────────────────────────────────────
+let activeEngine: AutomationEngine | null = null;
+
 ipcMain.on("start-bot", async (event, tasksArray) => {
+  if (activeEngine) {
+    event.reply("bot-log", "[WARN] A bot run is already in progress.");
+    return;
+  }
   try {
     const configPath = path.join(USER_DATA_PATH, "config.json");
-    const rawConfig = fs.readFileSync(configPath, "utf-8");
+    const rawConfig = await fs.promises.readFile(configPath, "utf-8");
     const config = JSON.parse(rawConfig);
 
     config.tasks = tasksArray;
-    fs.writeFileSync(configPath, JSON.stringify(config, null, 2));
+    await fs.promises.writeFile(configPath, JSON.stringify(config, null, 2));
 
     const engine = new AutomationEngine(USER_DATA_PATH);
-    engine.onLog = (msg) => event.reply("bot-log", msg);
+    activeEngine = engine;
+
+    const existingResults = loadSavedResults();
+    let nextResultId =
+      existingResults.length > 0
+        ? Math.max(0, ...existingResults.map((r: any) => Number(r.id) || 0)) + 1
+        : 1;
+    const currentRunId =
+      existingResults.length > 0
+        ? Math.max(0, ...existingResults.map((r: any) => Number(r.run_id) || 0)) + 1
+        : 1;
+
+    const reply = (channel: string, payload?: unknown) => {
+      if (!event.sender.isDestroyed()) event.reply(channel, payload);
+    };
+
+    engine.onLog = (msg) => reply("bot-log", msg);
     engine.onResult = (data) => {
-      if (!event.sender.isDestroyed()) event.reply("bot-result", data);
+      const enriched = { ...data, id: nextResultId++, run_id: currentRunId };
+      existingResults.push(enriched);
+      persistResults(existingResults);
+      reply("bot-result", enriched);
     };
 
     const screenshotPath = await engine.run();
-    event.reply("bot-done", screenshotPath);
+    reply("bot-done", screenshotPath);
   } catch (error: any) {
-    event.reply("bot-log", `[КРИТИЧЕСКАЯ ОШИБКА] ${error.message}`);
-    event.reply("bot-done", null);
+    if (!event.sender.isDestroyed()) {
+      event.reply("bot-log", `[КРИТИЧЕСКАЯ ОШИБКА] ${error.message}`);
+      event.reply("bot-done", null);
+    }
+  } finally {
+    activeEngine = null;
   }
+});
+
+ipcMain.on("stop-bot", () => {
+  activeEngine?.cancel();
 });
 
 ipcMain.on("open-path", (_event, p) => {
@@ -241,7 +352,6 @@ function setupUserFiles() {
             ...defaultConfig.settings,
             browser_path: userConfig.settings?.browser_path ?? "",
           },
-          telegram: { ...defaultConfig.telegram },
           tasks: Array.isArray(userConfig.tasks)
             ? userConfig.tasks
             : defaultConfig.tasks,
@@ -257,8 +367,9 @@ function setupUserFiles() {
       }
     }
 
-    if (fs.existsSync(selectorsSrc)) {
+    if (fs.existsSync(selectorsSrc) && !fs.existsSync(selectorsDest)) {
       fs.copyFileSync(selectorsSrc, selectorsDest);
+      console.log("[setupUserFiles] Selectors initialized from defaults.");
     }
   } catch (error) {
     console.error("Critical error configuring user files:", error);
@@ -342,7 +453,7 @@ function setupAutoUpdater(win: BrowserWindow) {
   const clearUpdateError = () => sendUpdateError(null, null, null);
 
   const scheduleRetry = (message: string) => {
-    updateRetryAttempt += 1;
+    updateRetryAttempt = Math.min(updateRetryAttempt + 1, UPDATE_RETRY_MAX_ATTEMPTS);
     const delay = Math.min(
       UPDATE_RETRY_MAX_MS,
       UPDATE_RETRY_BASE_MS * Math.pow(2, updateRetryAttempt - 1),
@@ -355,7 +466,8 @@ function setupAutoUpdater(win: BrowserWindow) {
     sendStatus(`Ошибка обновления. Повтор через ${retryInSec} сек.`);
 
     updateRetryTimer = setTimeout(() => {
-      if (!win.isDestroyed()) sendStatus("Повторяю проверку обновлений...");
+      if (win.isDestroyed()) return;
+      sendStatus("Повторяю проверку обновлений...");
       autoUpdater.checkForUpdatesAndNotify().catch((error: any) => {
         scheduleRetry(error?.message || String(error || "Неизвестная ошибка"));
       });
@@ -420,5 +532,6 @@ app.whenReady().then(async () => {
 });
 
 app.on("window-all-closed", () => {
+  if (updateRetryTimer) { clearTimeout(updateRetryTimer); updateRetryTimer = null; }
   if (process.platform !== "darwin") app.quit();
 });

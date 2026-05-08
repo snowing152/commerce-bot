@@ -56,7 +56,8 @@ function DashboardApp() {
       window.api.loadSession().catch(() => null),
       window.api.getVersion().catch(() => ''),
       window.api.getSubscriptionStatus().catch(() => null),
-    ]).then(([session, ver, sub]) => {
+      window.api.loadResults().catch(() => []),
+    ]).then(([session, ver, sub, savedResults]) => {
       if (Array.isArray(session) && session.length > 0) {
         setInitialTasks(fromSessionTasks(session as EngineTask[]))
       } else {
@@ -64,6 +65,7 @@ function DashboardApp() {
       }
       setVersion(ver)
       if (sub) setUser((sub as SubscriptionResult).user)
+      if (Array.isArray(savedResults)) setResults(savedResults as BotResult[])
     })
   }, [])
 
@@ -87,7 +89,6 @@ function DashboardApp() {
   }, [])
 
   const handleStartBot = (tasks: Task[]) => {
-    setResults([])
     setScreenshotPath(null)
     window.api.saveSession(toEngineTasks(tasks))
     window.api.startBot(toEngineTasks(tasks))
@@ -100,6 +101,15 @@ function DashboardApp() {
   const handleLogout = async () => {
     await window.api.logout()
     window.api.navigateTo('auth')
+  }
+
+  const handleClearResults = async () => {
+    await window.api.clearResults()
+    setResults([])
+  }
+
+  const handleExportResults = () => {
+    window.api.exportResultsCsv()
   }
 
   // Don't mount the page until session is loaded (avoid flash of empty task list)
@@ -135,6 +145,9 @@ function DashboardApp() {
       updateProgress={updateProgress}
       onSendLogs={() => window.api.sendLogToTelegram()}
       onViewScreenshot={p => window.api.openScreenshot(p)}
+      onStopBot={() => window.api.stopBot()}
+      onClearResults={handleClearResults}
+      onExportResults={handleExportResults}
     />
   )
 }

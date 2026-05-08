@@ -2,6 +2,7 @@ import { contextBridge, ipcRenderer, IpcRendererEvent } from "electron";
 
 contextBridge.exposeInMainWorld("api", {
   startBot: (tasksArray: any) => ipcRenderer.send("start-bot", tasksArray),
+  stopBot: () => ipcRenderer.send("stop-bot"),
 
   onLog: (callback: (msg: string) => void) => {
     const handler = (_e: IpcRendererEvent, msg: string) => callback(msg);
@@ -24,6 +25,9 @@ contextBridge.exposeInMainWorld("api", {
   // Session persistence
   saveSession: (data: any) => ipcRenderer.invoke("save-session", data),
   loadSession: () => ipcRenderer.invoke("load-session"),
+  loadResults: () => ipcRenderer.invoke("load-results"),
+  clearResults: () => ipcRenderer.invoke("clear-results"),
+  exportResultsCsv: () => ipcRenderer.invoke("export-results-csv"),
 
   // Send logs to Telegram
   sendLogToTelegram: () => ipcRenderer.invoke("send-log-telegram"),
@@ -55,8 +59,6 @@ contextBridge.exposeInMainWorld("api", {
   },
 
   // Auth
-  loginWithTelegram: (tgUser: object) =>
-    ipcRenderer.invoke("login-with-telegram", tgUser),
   getBotUsername: () => ipcRenderer.invoke("get-bot-username"),
 
   // Subscription
