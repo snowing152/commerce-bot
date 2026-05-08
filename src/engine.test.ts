@@ -29,8 +29,6 @@ describe("AutomationEngine integration tests", () => {
       {
         keyword: "test",
         target_name: "test product",
-        filters: ["rocket"],
-        cost: [],
       },
     ],
   };

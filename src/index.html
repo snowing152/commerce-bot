@@ -90,6 +90,9 @@
       button.info:hover {
         background: #0077b3;
       }
+      .temp-hidden {
+        display: none;
+      }
 
       .actions {
         display: grid;
@@ -219,6 +222,9 @@
       </p>
       <input type="number" id="productCount" min="1" max="10" value="1" />
       <button id="btnGenerate">Далее</button>
+      <button id="btnClearDebugProfile" class="secondary">
+        Очистить chrome_debug_profile
+      </button>
 
       <div
         style="
@@ -412,8 +418,9 @@
         const container = document.getElementById("tasksContainer");
         container.innerHTML = "";
 
+        let html = "";
         for (let i = 1; i <= count; i++) {
-          container.innerHTML += `
+          html += `
                     <div class="task-block">
                         <h3>Товар #${i}</h3>
                         <label>Ключевое слово (keyword):</label>
@@ -424,12 +431,15 @@
                         <p class="note important-note">Должно быть точно таким же, каким оно отображается на карточке товара!</p>
                         <input type="text" id="targetName_${i}" placeholder="Например: 그린홈 강아지 장난감 점프멜로디">
 
-                        <label>Фильтры (через запятую):</label>
-                        <p class="note">Укажите фильтры точно так же, как они написаны на сайте.</p>
-                        <input type="text" id="filters_${i}" placeholder="rocket, 공/볼">
+                        <div class="temp-hidden">
+                          <label>Фильтры (через запятую):</label>
+                          <p class="note">Укажите фильтры точно так же, как они написаны на сайте.</p>
+                          <input type="text" id="filters_${i}" placeholder="rocket, 공/볼">
+                        </div>
                     </div>
                 `;
         }
+        container.innerHTML = html;
 
         for (let i = 1; i <= count; i++) {
           const saved = savedTasks[i - 1];
@@ -453,12 +463,7 @@
           const targetName = document
             .getElementById(`targetName_${i}`)
             .value.trim();
-          const filtersRaw = document.getElementById(`filters_${i}`).value;
-          const filters = filtersRaw
-            .split(",")
-            .map((f) => f.trim())
-            .filter((f) => f);
-          tasks.push({ keyword, target_name: targetName, filters, cost: [] });
+          tasks.push({ keyword, target_name: targetName });
         }
         return tasks;
       }
@@ -518,6 +523,27 @@
           alert("Не удалось сохранить данные.");
         }
       });
+
+      document
+        .getElementById("btnClearDebugProfile")
+        .addEventListener("click", async () => {
+          const clearBtn = document.getElementById("btnClearDebugProfile");
+          const originalText = clearBtn.innerText;
+          clearBtn.innerText = "Удаляю...";
+          clearBtn.disabled = true;
+
+          const result = await window.api.clearChromeDebugProfile();
+
+          if (result && result.success) {
+            alert(`Папка профиля очищена:\n${result.path}`);
+          } else {
+            const errorText = result?.error || "Неизвестная ошибка";
+            alert(`Ошибка удаления:\n${errorText}`);
+          }
+
+          clearBtn.innerText = originalText;
+          clearBtn.disabled = false;
+        });
 
       // Send logs to Telegram
       document
