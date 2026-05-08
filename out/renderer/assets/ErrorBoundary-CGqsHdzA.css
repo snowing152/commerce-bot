@@ -393,6 +393,10 @@
     inset-block: calc(var(--spacing) * 0);
   }
 
+  .start {
+    inset-inline-start: var(--spacing);
+  }
+
   .left-0 {
     left: calc(var(--spacing) * 0);
   }
@@ -415,6 +419,10 @@
 
   .mx-auto {
     margin-inline: auto;
+  }
+
+  .my-1 {
+    margin-block: calc(var(--spacing) * 1);
   }
 
   .mt-0\.5 {
@@ -457,12 +465,24 @@
     margin-bottom: calc(var(--spacing) * .5);
   }
 
+  .mb-1 {
+    margin-bottom: calc(var(--spacing) * 1);
+  }
+
   .mb-1\.5 {
     margin-bottom: calc(var(--spacing) * 1.5);
   }
 
   .mb-2 {
     margin-bottom: calc(var(--spacing) * 2);
+  }
+
+  .mb-3 {
+    margin-bottom: calc(var(--spacing) * 3);
+  }
+
+  .mb-4 {
+    margin-bottom: calc(var(--spacing) * 4);
   }
 
   .mb-8 {
@@ -507,6 +527,10 @@
 
   .h-2 {
     height: calc(var(--spacing) * 2);
+  }
+
+  .h-2\.5 {
+    height: calc(var(--spacing) * 2.5);
   }
 
   .h-3 {
@@ -585,6 +609,10 @@
     width: calc(var(--spacing) * 2);
   }
 
+  .w-2\.5 {
+    width: calc(var(--spacing) * 2.5);
+  }
+
   .w-3 {
     width: calc(var(--spacing) * 3);
   }
@@ -603,6 +631,10 @@
 
   .w-6 {
     width: calc(var(--spacing) * 6);
+  }
+
+  .w-8 {
+    width: calc(var(--spacing) * 8);
   }
 
   .w-9 {
@@ -685,8 +717,8 @@
     min-width: 18px;
   }
 
-  .min-w-\[140px\] {
-    min-width: 140px;
+  .min-w-\[160px\] {
+    min-width: 160px;
   }
 
   .flex-1 {
@@ -711,10 +743,6 @@
 
   .animate-spin {
     animation: var(--animate-spin);
-  }
-
-  .grid-cols-2 {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
   .grid-cols-\[minmax\(320px\,36\%\)_1fr\] {
@@ -1113,6 +1141,10 @@
     background-color: var(--color-zinc-50);
   }
 
+  .bg-zinc-100 {
+    background-color: var(--color-zinc-100);
+  }
+
   .bg-zinc-200 {
     background-color: var(--color-zinc-200);
   }
@@ -1284,6 +1316,10 @@
 
   .px-5 {
     padding-inline: calc(var(--spacing) * 5);
+  }
+
+  .px-6 {
+    padding-inline: calc(var(--spacing) * 6);
   }
 
   .px-8 {
@@ -1599,6 +1635,10 @@
 
   .text-zinc-700 {
     color: var(--color-zinc-700);
+  }
+
+  .text-zinc-900 {
+    color: var(--color-zinc-900);
   }
 
   .text-zinc-950 {

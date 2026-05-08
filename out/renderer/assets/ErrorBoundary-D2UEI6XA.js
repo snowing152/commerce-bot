@@ -7411,6 +7411,7 @@ function DashboardPage({
   version = "",
   initialTasks,
   onStartBot,
+  onTasksChanged,
   extraLogs,
   updateStatus,
   user,
@@ -7426,10 +7427,13 @@ function DashboardPage({
   const [autoscroll, setAutoscroll] = reactExports.useState(true);
   const [filter, setFilter] = reactExports.useState("ALL");
   const [showNewTask, setShowNewTask] = reactExports.useState(false);
+  const [editingTask, setEditingTask] = reactExports.useState(null);
   const [stopNotice, setStopNotice] = reactExports.useState(false);
   const [imgError, setImgError] = reactExports.useState(false);
   const [ctxMenu, setCtxMenu] = reactExports.useState(null);
   const [rightTab, setRightTab] = reactExports.useState("log");
+  const [unreadResults, setUnreadResults] = reactExports.useState(0);
+  const [foundTaskIds, setFoundTaskIds] = reactExports.useState(/* @__PURE__ */ new Set());
   const logScrollRef = reactExports.useRef(null);
   reactExports.useEffect(() => {
     if (initialTasks && initialTasks.length > 0) {
@@ -7443,7 +7447,10 @@ function DashboardPage({
         e.preventDefault();
         setShowNewTask(true);
       }
-      if (e.key === "Escape") setShowNewTask(false);
+      if (e.key === "Escape") {
+        setShowNewTask(false);
+        setEditingTask(null);
+      }
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
@@ -7486,7 +7493,36 @@ function DashboardPage({
     setStopNotice(true);
     setTimeout(() => setStopNotice(false), 4e3);
   };
-  const deleteTask = (id) => setTasks((prev) => prev.filter((t) => t.id !== id));
+  const deleteTask = (id) => {
+    setTasks((prev) => {
+      const next = prev.filter((t) => t.id !== id);
+      onTasksChanged?.(next);
+      return next;
+    });
+  };
+  const applyTaskEdit = reactExports.useCallback((id, changes) => {
+    setTasks((prev) => {
+      const next = prev.map((t) => t.id === id ? { ...t, ...changes } : t);
+      onTasksChanged?.(next);
+      return next;
+    });
+    setEditingTask(null);
+  }, [onTasksChanged]);
+  reactExports.useEffect(() => {
+    if (results.length === 0) return;
+    const latest = results[results.length - 1];
+    setFoundTaskIds((prev) => {
+      const match = tasks.find((t) => t.keyword.toLowerCase() === latest.keyword.toLowerCase());
+      if (!match || prev.has(match.id)) return prev;
+      const next = new Set(prev);
+      next.add(match.id);
+      return next;
+    });
+  }, [results.length]);
+  reactExports.useEffect(() => {
+    if (results.length === 0) return;
+    if (rightTab !== "results") setUnreadResults((prev) => prev + 1);
+  }, [results.length]);
   return /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "relative h-full w-full flex flex-col bg-zinc-950 text-zinc-200", children: [
     /* @__PURE__ */ jsxRuntimeExports.jsxs("header", { className: "h-11 shrink-0 flex items-center justify-between px-4 border-b border-zinc-800/70 bg-zinc-950/90 backdrop-blur", children: [
       /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex items-center gap-3", children: [
@@ -7543,11 +7579,25 @@ function DashboardPage({
             )
           }
         ),
-        /* @__PURE__ */ jsxRuntimeExports.jsxs("ul", { className: "flex-1 overflow-y-auto", children: [
+        tasks.length === 0 ? /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "flex-1 grid place-items-center px-6 py-10 text-center", children: /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { children: [
+          /* @__PURE__ */ jsxRuntimeExports.jsx(Icon, { name: "target", className: "w-8 h-8 text-zinc-700 mx-auto mb-3" }),
+          /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "text-[13px] font-semibold text-zinc-300 mb-1", children: "No tasks yet" }),
+          /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "text-[12px] text-zinc-500 mb-4", children: "Add a task to start searching on Coupang" }),
+          /* @__PURE__ */ jsxRuntimeExports.jsx(
+            Button,
+            {
+              variant: "secondary",
+              size: "md",
+              onClick: () => setShowNewTask(true),
+              leadingIcon: /* @__PURE__ */ jsxRuntimeExports.jsx(Icon, { name: "plus", className: "w-3.5 h-3.5" }),
+              children: "Add task"
+            }
+          )
+        ] }) }) : /* @__PURE__ */ jsxRuntimeExports.jsxs("ul", { className: "flex-1 overflow-y-auto", children: [
           tasks.map((t) => /* @__PURE__ */ jsxRuntimeExports.jsx("li", { onContextMenu: (e) => {
             e.preventDefault();
-            setCtxMenu({ x: e.clientX, y: e.clientY, taskId: t.id });
-          }, children: /* @__PURE__ */ jsxRuntimeExports.jsx(TaskRow, { task: t, selected: selectedId === t.id, onClick: () => setSelectedId(t.id) }) }, t.id)),
+            setCtxMenu({ x: e.clientX, y: e.clientY, taskId: t.id, confirming: false });
+          }, children: /* @__PURE__ */ jsxRuntimeExports.jsx(TaskRow, { task: t, selected: selectedId === t.id, onClick: () => setSelectedId(t.id), found: foundTaskIds.has(t.id) }) }, t.id)),
           /* @__PURE__ */ jsxRuntimeExports.jsx("li", { className: "px-4 py-6 text-center", children: /* @__PURE__ */ jsxRuntimeExports.jsxs("button", { onClick: () => setShowNewTask(true), className: "text-[12px] text-zinc-500 hover:text-zinc-300 inline-flex items-center gap-1.5", children: [
             /* @__PURE__ */ jsxRuntimeExports.jsx(Icon, { name: "plus", className: "w-3 h-3" }),
             " Add task"
@@ -7559,12 +7609,16 @@ function DashboardPage({
           /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "flex items-center gap-0.5", children: ["log", "results"].map((tab) => /* @__PURE__ */ jsxRuntimeExports.jsxs(
             "button",
             {
-              onClick: () => setRightTab(tab),
+              onClick: () => {
+                setRightTab(tab);
+                if (tab === "results") setUnreadResults(0);
+              },
               className: `h-7 px-3 text-[12px] font-medium rounded-md transition-colors flex items-center gap-1.5 ${rightTab === tab ? "bg-zinc-800 text-zinc-100" : "text-zinc-500 hover:text-zinc-300 hover:bg-zinc-800/50"}`,
               children: [
                 tab === "log" ? "Live Log" : "Results",
                 tab === "log" && /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "text-[10.5px] text-zinc-600 tabular-nums", children: allLogs.length }),
-                tab === "results" && results.length > 0 && /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "text-[10.5px] bg-zinc-700 text-zinc-300 rounded px-1 tabular-nums", children: results.length })
+                tab === "results" && unreadResults > 0 && rightTab !== "results" && /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "text-[10.5px] bg-zinc-100 text-zinc-900 rounded px-1 tabular-nums font-semibold", children: unreadResults }),
+                tab === "results" && (rightTab === "results" || unreadResults === 0) && results.length > 0 && /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "text-[10.5px] bg-zinc-700 text-zinc-300 rounded px-1 tabular-nums", children: results.length })
               ]
             },
             tab
@@ -7685,43 +7739,89 @@ function DashboardPage({
       ] }) })
     ] }),
     showNewTask && /* @__PURE__ */ jsxRuntimeExports.jsx(NewTaskDialog, { onClose: () => setShowNewTask(false), onSubmit: addTask }),
-    ctxMenu && /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "fixed inset-0 z-40", onClick: () => setCtxMenu(null), children: /* @__PURE__ */ jsxRuntimeExports.jsx(
+    editingTask && /* @__PURE__ */ jsxRuntimeExports.jsx(NewTaskDialog, { onClose: () => setEditingTask(null), onSubmit: addTask, editTask: editingTask, onEdit: applyTaskEdit }),
+    ctxMenu && /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "fixed inset-0 z-40", onClick: () => setCtxMenu(null), children: /* @__PURE__ */ jsxRuntimeExports.jsxs(
       "div",
       {
         style: { top: ctxMenu.y, left: ctxMenu.x },
-        className: "absolute z-50 min-w-[140px] rounded-md border border-zinc-700 bg-zinc-900 shadow-xl py-1",
+        className: "absolute z-50 min-w-[160px] rounded-md border border-zinc-700 bg-zinc-900 shadow-xl py-1",
         onClick: (e) => e.stopPropagation(),
-        children: /* @__PURE__ */ jsxRuntimeExports.jsxs(
-          "button",
-          {
-            className: "w-full text-left px-3 py-1.5 text-[12.5px] text-red-400 hover:bg-zinc-800 flex items-center gap-2",
-            onClick: () => {
-              deleteTask(ctxMenu.taskId);
-              setCtxMenu(null);
-            },
-            children: [
-              /* @__PURE__ */ jsxRuntimeExports.jsx(Icon, { name: "x", className: "w-3.5 h-3.5" }),
-              " Delete task"
-            ]
-          }
-        )
+        children: [
+          /* @__PURE__ */ jsxRuntimeExports.jsxs(
+            "button",
+            {
+              className: "w-full text-left px-3 py-1.5 text-[12.5px] text-zinc-300 hover:bg-zinc-800 flex items-center gap-2",
+              onClick: () => {
+                const task = tasks.find((t) => t.id === ctxMenu.taskId);
+                if (task) setEditingTask(task);
+                setCtxMenu(null);
+              },
+              children: [
+                /* @__PURE__ */ jsxRuntimeExports.jsx(Icon, { name: "settings", className: "w-3.5 h-3.5" }),
+                " Edit task"
+              ]
+            }
+          ),
+          /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "my-1 border-t border-zinc-800/70" }),
+          !ctxMenu.confirming ? /* @__PURE__ */ jsxRuntimeExports.jsxs(
+            "button",
+            {
+              className: "w-full text-left px-3 py-1.5 text-[12.5px] text-red-400 hover:bg-zinc-800 flex items-center gap-2",
+              onClick: () => setCtxMenu((prev) => prev ? { ...prev, confirming: true } : null),
+              children: [
+                /* @__PURE__ */ jsxRuntimeExports.jsx(Icon, { name: "x", className: "w-3.5 h-3.5" }),
+                " Delete task"
+              ]
+            }
+          ) : /* @__PURE__ */ jsxRuntimeExports.jsxs(jsxRuntimeExports.Fragment, { children: [
+            /* @__PURE__ */ jsxRuntimeExports.jsxs(
+              "button",
+              {
+                className: "w-full text-left px-3 py-1.5 text-[12.5px] text-red-400 hover:bg-zinc-800 flex items-center gap-2 font-medium",
+                onClick: () => {
+                  deleteTask(ctxMenu.taskId);
+                  setCtxMenu(null);
+                },
+                children: [
+                  /* @__PURE__ */ jsxRuntimeExports.jsx(Icon, { name: "x", className: "w-3.5 h-3.5" }),
+                  " Confirm delete"
+                ]
+              }
+            ),
+            /* @__PURE__ */ jsxRuntimeExports.jsxs(
+              "button",
+              {
+                className: "w-full text-left px-3 py-1.5 text-[12.5px] text-zinc-400 hover:bg-zinc-800 flex items-center gap-2",
+                onClick: () => setCtxMenu(null),
+                children: [
+                  /* @__PURE__ */ jsxRuntimeExports.jsx(Icon, { name: "chevronRight", className: "w-3.5 h-3.5 rotate-180" }),
+                  " Cancel"
+                ]
+              }
+            )
+          ] })
+        ]
       }
     ) })
   ] });
 }
 function NewTaskDialog({
   onClose,
-  onSubmit
+  onSubmit,
+  editTask,
+  onEdit
 }) {
-  const [keyword, setKeyword] = reactExports.useState("");
-  const [product, setProduct] = reactExports.useState("");
-  const [min, setMin] = reactExports.useState("");
-  const [max, setMax] = reactExports.useState("");
-  const valid = keyword.trim() && product.trim() && Number(min) > 0 && Number(max) >= Number(min);
+  const [keyword, setKeyword] = reactExports.useState(editTask?.keyword ?? "");
+  const [product, setProduct] = reactExports.useState(editTask?.product ?? "");
+  const valid = keyword.trim() && product.trim();
   const submit = (e) => {
     e.preventDefault();
     if (!valid) return;
-    onSubmit({ keyword: keyword.trim(), product: product.trim(), min: Number(min), max: Number(max) });
+    if (editTask && onEdit) {
+      onEdit(editTask.id, { keyword: keyword.trim(), product: product.trim() });
+    } else {
+      onSubmit({ keyword: keyword.trim(), product: product.trim() });
+    }
   };
   return /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "absolute inset-0 z-50 grid place-items-center bg-black/50 backdrop-blur-sm", onClick: onClose, children: /* @__PURE__ */ jsxRuntimeExports.jsxs(
     "form",
@@ -7731,16 +7831,12 @@ function NewTaskDialog({
       className: "w-[460px] rounded-lg border border-zinc-800 bg-zinc-950 shadow-[0_30px_80px_-20px_rgba(0,0,0,0.8)]",
       children: [
         /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "px-5 pt-5 pb-4 border-b border-zinc-800/70", children: [
-          /* @__PURE__ */ jsxRuntimeExports.jsx("h2", { className: "text-[14px] font-semibold text-zinc-100 tracking-tight", children: "New task" }),
-          /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "text-[11.5px] text-zinc-500 mt-0.5", children: "The bot will poll Coupang for this product and order when it falls in band." })
+          /* @__PURE__ */ jsxRuntimeExports.jsx("h2", { className: "text-[14px] font-semibold text-zinc-100 tracking-tight", children: editTask ? "Edit task" : "New task" }),
+          /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "text-[11.5px] text-zinc-500 mt-0.5", children: editTask ? "Update the keyword and target product name." : "The bot will poll Coupang for this product and order when it falls in band." })
         ] }),
         /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "px-5 py-4 space-y-3.5", children: [
           /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "Search keyword", hint: "Korean text supported", children: /* @__PURE__ */ jsxRuntimeExports.jsx(Input, { value: keyword, onChange: (e) => setKeyword(e.target.value), placeholder: "e.g. 무선 이어폰", autoFocus: true }) }),
-          /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "Target product name", hint: "Substring match against listing titles", children: /* @__PURE__ */ jsxRuntimeExports.jsx(Input, { value: product, onChange: (e) => setProduct(e.target.value), placeholder: "e.g. Galaxy Buds3 Pro 화이트" }) }),
-          /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "Price range (KRW)", children: /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "grid grid-cols-2 gap-2", children: [
-            /* @__PURE__ */ jsxRuntimeExports.jsx(Input, { type: "number", value: min, onChange: (e) => setMin(e.target.value), placeholder: "min  120000" }),
-            /* @__PURE__ */ jsxRuntimeExports.jsx(Input, { type: "number", value: max, onChange: (e) => setMax(e.target.value), placeholder: "max  160000" })
-          ] }) })
+          /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "Target product name", hint: "Substring match against listing titles", children: /* @__PURE__ */ jsxRuntimeExports.jsx(Input, { value: product, onChange: (e) => setProduct(e.target.value), placeholder: "e.g. Galaxy Buds3 Pro 화이트" }) })
         ] }),
         /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "px-5 py-3.5 border-t border-zinc-800/70 flex items-center justify-between bg-zinc-900/30", children: [
           /* @__PURE__ */ jsxRuntimeExports.jsxs("p", { className: "text-[11px] text-zinc-500 inline-flex items-center gap-1.5", children: [
@@ -7749,7 +7845,7 @@ function NewTaskDialog({
           ] }),
           /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex items-center gap-1.5", children: [
             /* @__PURE__ */ jsxRuntimeExports.jsx(Button, { variant: "ghost", size: "md", type: "button", onClick: onClose, children: "Cancel" }),
-            /* @__PURE__ */ jsxRuntimeExports.jsx(Button, { variant: "primary", size: "md", type: "submit", disabled: !valid, children: "Create task" })
+            /* @__PURE__ */ jsxRuntimeExports.jsx(Button, { variant: "primary", size: "md", type: "submit", disabled: !valid, children: editTask ? "Save changes" : "Create task" })
           ] })
         ] })
       ]
@@ -7763,8 +7859,7 @@ const Field = ({ label, hint, children }) => /* @__PURE__ */ jsxRuntimeExports.j
   ] }),
   children
 ] });
-const TaskRow = ({ task, selected, onClick }) => {
-  const fmt = (n) => "₩" + n.toLocaleString("ko-KR");
+const TaskRow = ({ task, selected, onClick, found }) => {
   return /* @__PURE__ */ jsxRuntimeExports.jsxs(
     "button",
     {
@@ -7779,17 +7874,18 @@ const TaskRow = ({ task, selected, onClick }) => {
             ] }),
             /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "text-[13px] font-medium text-zinc-100 tracking-tight truncate", children: task.product })
           ] }),
-          /* @__PURE__ */ jsxRuntimeExports.jsx(StatusBadge, { status: task.status, label: task.status, size: "sm", pulse: task.status === "running" })
-        ] }),
-        /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex items-center gap-3 pl-[18px] text-[11px] text-zinc-500 font-mono tabular-nums", children: [
-          task.min > 0 && /* @__PURE__ */ jsxRuntimeExports.jsx("span", { children: fmt(task.min) }),
-          task.min > 0 && task.max > 0 && /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "text-zinc-700", children: "→" }),
-          task.max > 0 && /* @__PURE__ */ jsxRuntimeExports.jsx("span", { children: fmt(task.max) }),
-          /* @__PURE__ */ jsxRuntimeExports.jsxs("span", { className: `ml-auto px-1.5 py-px text-[10px] rounded font-sans ${selected ? "text-zinc-400" : "text-zinc-600 group-hover:text-zinc-400"}`, children: [
-            "#",
-            task.id
+          /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex items-center gap-1.5 shrink-0", children: [
+            found && /* @__PURE__ */ jsxRuntimeExports.jsxs("span", { className: "inline-flex items-center gap-0.5 h-5 px-1.5 rounded-full border bg-emerald-500/[0.06] border-emerald-500/15 text-emerald-300/90 text-[10.5px] font-medium tracking-[0.04em] uppercase", children: [
+              /* @__PURE__ */ jsxRuntimeExports.jsx(Icon, { name: "check", className: "w-2.5 h-2.5" }),
+              " Found"
+            ] }),
+            /* @__PURE__ */ jsxRuntimeExports.jsx(StatusBadge, { status: task.status, label: task.status, size: "sm", pulse: task.status === "running" })
           ] })
-        ] })
+        ] }),
+        /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "flex items-center gap-3 pl-[18px] text-[11px] text-zinc-500 font-mono tabular-nums", children: /* @__PURE__ */ jsxRuntimeExports.jsxs("span", { className: `ml-auto px-1.5 py-px text-[10px] rounded font-sans ${selected ? "text-zinc-400" : "text-zinc-600 group-hover:text-zinc-400"}`, children: [
+          "#",
+          task.id
+        ] }) })
       ]
     }
   );

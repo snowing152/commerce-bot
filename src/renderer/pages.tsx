@@ -12,8 +12,6 @@ export interface Task {
   id: string
   keyword: string
   product: string
-  min: number
-  max: number
   status: 'idle' | 'running' | 'warn' | 'error'
 }
 
@@ -252,6 +250,7 @@ export interface DashboardPageProps {
   version?: string
   initialTasks?: Task[]
   onStartBot?: (tasks: Task[]) => void
+  onTasksChanged?: (tasks: Task[]) => void
   extraLogs?: LogEntry[]
   updateStatus?: string
   user?: { first_name: string; photo_url: string | null } | null
@@ -288,6 +287,7 @@ export function DashboardPage({
   version = '',
   initialTasks,
   onStartBot,
+  onTasksChanged,
   extraLogs,
   updateStatus,
   user,
@@ -303,10 +303,13 @@ export function DashboardPage({
   const [autoscroll, setAutoscroll] = useState(true)
   const [filter, setFilter] = useState('ALL')
   const [showNewTask, setShowNewTask] = useState(false)
+  const [editingTask, setEditingTask] = useState<Task | null>(null)
   const [stopNotice, setStopNotice] = useState(false)
   const [imgError, setImgError] = useState(false)
-  const [ctxMenu, setCtxMenu] = useState<{ x: number; y: number; taskId: string } | null>(null)
+  const [ctxMenu, setCtxMenu] = useState<{ x: number; y: number; taskId: string; confirming: boolean } | null>(null)
   const [rightTab, setRightTab] = useState<'log' | 'results'>('log')
+  const [unreadResults, setUnreadResults] = useState(0)
+  const [foundTaskIds, setFoundTaskIds] = useState<Set<string>>(new Set())
   const logScrollRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
@@ -319,7 +322,7 @@ export function DashboardPage({
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if ((e.metaKey || e.ctrlKey) && e.key === 'n') { e.preventDefault(); setShowNewTask(true) }
-      if (e.key === 'Escape') setShowNewTask(false)
+      if (e.key === 'Escape') { setShowNewTask(false); setEditingTask(null) }
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
@@ -370,7 +373,39 @@ export function DashboardPage({
     setTimeout(() => setStopNotice(false), 4000)
   }
 
-  const deleteTask = (id: string) => setTasks(prev => prev.filter(t => t.id !== id))
+  const deleteTask = (id: string) => {
+    setTasks(prev => {
+      const next = prev.filter(t => t.id !== id)
+      onTasksChanged?.(next)
+      return next
+    })
+  }
+
+  const applyTaskEdit = useCallback((id: string, changes: Omit<Task, 'id' | 'status'>) => {
+    setTasks(prev => {
+      const next = prev.map(t => t.id === id ? { ...t, ...changes } : t)
+      onTasksChanged?.(next)
+      return next
+    })
+    setEditingTask(null)
+  }, [onTasksChanged])
+
+  useEffect(() => {
+    if (results.length === 0) return
+    const latest = results[results.length - 1]
+    setFoundTaskIds(prev => {
+      const match = tasks.find(t => t.keyword.toLowerCase() === latest.keyword.toLowerCase())
+      if (!match || prev.has(match.id)) return prev
+      const next = new Set(prev)
+      next.add(match.id)
+      return next
+    })
+  }, [results.length]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => {
+    if (results.length === 0) return
+    if (rightTab !== 'results') setUnreadResults(prev => prev + 1)
+  }, [results.length]) // eslint-disable-line react-hooks/exhaustive-deps
 
   return (
     <div className="relative h-full w-full flex flex-col bg-zinc-950 text-zinc-200">
@@ -435,18 +470,32 @@ export function DashboardPage({
               </Button>
             }
           />
-          <ul className="flex-1 overflow-y-auto">
-            {tasks.map(t => (
-              <li key={t.id} onContextMenu={e => { e.preventDefault(); setCtxMenu({ x: e.clientX, y: e.clientY, taskId: t.id }) }}>
-                <TaskRow task={t} selected={selectedId === t.id} onClick={() => setSelectedId(t.id)} />
+          {tasks.length === 0 ? (
+            <div className="flex-1 grid place-items-center px-6 py-10 text-center">
+              <div>
+                <Icon name="target" className="w-8 h-8 text-zinc-700 mx-auto mb-3" />
+                <p className="text-[13px] font-semibold text-zinc-300 mb-1">No tasks yet</p>
+                <p className="text-[12px] text-zinc-500 mb-4">Add a task to start searching on Coupang</p>
+                <Button variant="secondary" size="md" onClick={() => setShowNewTask(true)}
+                  leadingIcon={<Icon name="plus" className="w-3.5 h-3.5" />}>
+                  Add task
+                </Button>
+              </div>
+            </div>
+          ) : (
+            <ul className="flex-1 overflow-y-auto">
+              {tasks.map(t => (
+                <li key={t.id} onContextMenu={e => { e.preventDefault(); setCtxMenu({ x: e.clientX, y: e.clientY, taskId: t.id, confirming: false }) }}>
+                  <TaskRow task={t} selected={selectedId === t.id} onClick={() => setSelectedId(t.id)} found={foundTaskIds.has(t.id)} />
+                </li>
+              ))}
+              <li className="px-4 py-6 text-center">
+                <button onClick={() => setShowNewTask(true)} className="text-[12px] text-zinc-500 hover:text-zinc-300 inline-flex items-center gap-1.5">
+                  <Icon name="plus" className="w-3 h-3" /> Add task
+                </button>
               </li>
-            ))}
-            <li className="px-4 py-6 text-center">
-              <button onClick={() => setShowNewTask(true)} className="text-[12px] text-zinc-500 hover:text-zinc-300 inline-flex items-center gap-1.5">
-                <Icon name="plus" className="w-3 h-3" /> Add task
-              </button>
-            </li>
-          </ul>
+            </ul>
+          )}
         </aside>
 
         {/* RIGHT: TABBED PANEL (Log / Results) */}
@@ -455,13 +504,16 @@ export function DashboardPage({
           <div className="h-10 shrink-0 flex items-center justify-between px-4 border-b border-zinc-800/70">
             <div className="flex items-center gap-0.5">
               {(['log', 'results'] as const).map(tab => (
-                <button key={tab} onClick={() => setRightTab(tab)}
+                <button key={tab} onClick={() => { setRightTab(tab); if (tab === 'results') setUnreadResults(0) }}
                   className={`h-7 px-3 text-[12px] font-medium rounded-md transition-colors flex items-center gap-1.5 ${
                     rightTab === tab ? 'bg-zinc-800 text-zinc-100' : 'text-zinc-500 hover:text-zinc-300 hover:bg-zinc-800/50'
                   }`}>
                   {tab === 'log' ? 'Live Log' : 'Results'}
                   {tab === 'log' && <span className="text-[10.5px] text-zinc-600 tabular-nums">{allLogs.length}</span>}
-                  {tab === 'results' && results.length > 0 && (
+                  {tab === 'results' && unreadResults > 0 && rightTab !== 'results' && (
+                    <span className="text-[10.5px] bg-zinc-100 text-zinc-900 rounded px-1 tabular-nums font-semibold">{unreadResults}</span>
+                  )}
+                  {tab === 'results' && (rightTab === 'results' || unreadResults === 0) && results.length > 0 && (
                     <span className="text-[10.5px] bg-zinc-700 text-zinc-300 rounded px-1 tabular-nums">{results.length}</span>
                   )}
                 </button>
@@ -593,20 +645,49 @@ export function DashboardPage({
       </footer>
 
       {showNewTask && <NewTaskDialog onClose={() => setShowNewTask(false)} onSubmit={addTask} />}
+      {editingTask && <NewTaskDialog onClose={() => setEditingTask(null)} onSubmit={addTask} editTask={editingTask} onEdit={applyTaskEdit} />}
 
       {ctxMenu && (
         <div className="fixed inset-0 z-40" onClick={() => setCtxMenu(null)}>
           <div
             style={{ top: ctxMenu.y, left: ctxMenu.x }}
-            className="absolute z-50 min-w-[140px] rounded-md border border-zinc-700 bg-zinc-900 shadow-xl py-1"
+            className="absolute z-50 min-w-[160px] rounded-md border border-zinc-700 bg-zinc-900 shadow-xl py-1"
             onClick={e => e.stopPropagation()}
           >
             <button
-              className="w-full text-left px-3 py-1.5 text-[12.5px] text-red-400 hover:bg-zinc-800 flex items-center gap-2"
-              onClick={() => { deleteTask(ctxMenu.taskId); setCtxMenu(null) }}
+              className="w-full text-left px-3 py-1.5 text-[12.5px] text-zinc-300 hover:bg-zinc-800 flex items-center gap-2"
+              onClick={() => {
+                const task = tasks.find(t => t.id === ctxMenu.taskId)
+                if (task) setEditingTask(task)
+                setCtxMenu(null)
+              }}
             >
-              <Icon name="x" className="w-3.5 h-3.5" /> Delete task
+              <Icon name="settings" className="w-3.5 h-3.5" /> Edit task
             </button>
+            <div className="my-1 border-t border-zinc-800/70" />
+            {!ctxMenu.confirming ? (
+              <button
+                className="w-full text-left px-3 py-1.5 text-[12.5px] text-red-400 hover:bg-zinc-800 flex items-center gap-2"
+                onClick={() => setCtxMenu(prev => prev ? { ...prev, confirming: true } : null)}
+              >
+                <Icon name="x" className="w-3.5 h-3.5" /> Delete task
+              </button>
+            ) : (
+              <>
+                <button
+                  className="w-full text-left px-3 py-1.5 text-[12.5px] text-red-400 hover:bg-zinc-800 flex items-center gap-2 font-medium"
+                  onClick={() => { deleteTask(ctxMenu.taskId); setCtxMenu(null) }}
+                >
+                  <Icon name="x" className="w-3.5 h-3.5" /> Confirm delete
+                </button>
+                <button
+                  className="w-full text-left px-3 py-1.5 text-[12.5px] text-zinc-400 hover:bg-zinc-800 flex items-center gap-2"
+                  onClick={() => setCtxMenu(null)}
+                >
+                  <Icon name="chevronRight" className="w-3.5 h-3.5 rotate-180" /> Cancel
+                </button>
+              </>
+            )}
           </div>
         </div>
       )}
@@ -614,24 +695,30 @@ export function DashboardPage({
   )
 }
 
-/* ---- New Task modal ---- */
+/* ---- New Task / Edit Task modal ---- */
 function NewTaskDialog({
   onClose,
   onSubmit,
+  editTask,
+  onEdit,
 }: {
   onClose: () => void
   onSubmit: (t: Omit<Task, 'id' | 'status'>) => void
+  editTask?: Task
+  onEdit?: (id: string, changes: Omit<Task, 'id' | 'status'>) => void
 }) {
-  const [keyword, setKeyword] = useState('')
-  const [product, setProduct] = useState('')
-  const [min, setMin] = useState('')
-  const [max, setMax] = useState('')
-  const valid = keyword.trim() && product.trim() && Number(min) > 0 && Number(max) >= Number(min)
+  const [keyword, setKeyword] = useState(editTask?.keyword ?? '')
+  const [product, setProduct] = useState(editTask?.product ?? '')
+  const valid = keyword.trim() && product.trim()
 
   const submit = (e: React.FormEvent) => {
     e.preventDefault()
     if (!valid) return
-    onSubmit({ keyword: keyword.trim(), product: product.trim(), min: Number(min), max: Number(max) })
+    if (editTask && onEdit) {
+      onEdit(editTask.id, { keyword: keyword.trim(), product: product.trim() })
+    } else {
+      onSubmit({ keyword: keyword.trim(), product: product.trim() })
+    }
   }
 
   return (
@@ -639,8 +726,8 @@ function NewTaskDialog({
       <form onSubmit={submit} onClick={e => e.stopPropagation()}
         className="w-[460px] rounded-lg border border-zinc-800 bg-zinc-950 shadow-[0_30px_80px_-20px_rgba(0,0,0,0.8)]">
         <div className="px-5 pt-5 pb-4 border-b border-zinc-800/70">
-          <h2 className="text-[14px] font-semibold text-zinc-100 tracking-tight">New task</h2>
-          <p className="text-[11.5px] text-zinc-500 mt-0.5">The bot will poll Coupang for this product and order when it falls in band.</p>
+          <h2 className="text-[14px] font-semibold text-zinc-100 tracking-tight">{editTask ? 'Edit task' : 'New task'}</h2>
+          <p className="text-[11.5px] text-zinc-500 mt-0.5">{editTask ? 'Update the keyword and target product name.' : 'The bot will poll Coupang for this product and order when it falls in band.'}</p>
         </div>
         <div className="px-5 py-4 space-y-3.5">
           <Field label="Search keyword" hint="Korean text supported">
@@ -649,18 +736,12 @@ function NewTaskDialog({
           <Field label="Target product name" hint="Substring match against listing titles">
             <Input value={product} onChange={e => setProduct(e.target.value)} placeholder="e.g. Galaxy Buds3 Pro 화이트" />
           </Field>
-          <Field label="Price range (KRW)">
-            <div className="grid grid-cols-2 gap-2">
-              <Input type="number" value={min} onChange={e => setMin(e.target.value)} placeholder="min  120000" />
-              <Input type="number" value={max} onChange={e => setMax(e.target.value)} placeholder="max  160000" />
-            </div>
-          </Field>
         </div>
         <div className="px-5 py-3.5 border-t border-zinc-800/70 flex items-center justify-between bg-zinc-900/30">
           <p className="text-[11px] text-zinc-500 inline-flex items-center gap-1.5"><Kbd>Esc</Kbd> to cancel</p>
           <div className="flex items-center gap-1.5">
             <Button variant="ghost" size="md" type="button" onClick={onClose}>Cancel</Button>
-            <Button variant="primary" size="md" type="submit" disabled={!valid}>Create task</Button>
+            <Button variant="primary" size="md" type="submit" disabled={!valid}>{editTask ? 'Save changes' : 'Create task'}</Button>
           </div>
         </div>
       </form>
@@ -678,8 +759,7 @@ const Field = ({ label, hint, children }: { label: string; hint?: string; childr
   </label>
 )
 
-const TaskRow = ({ task, selected, onClick }: { task: Task; selected: boolean; onClick: () => void }) => {
-  const fmt = (n: number) => '₩' + n.toLocaleString('ko-KR')
+const TaskRow = ({ task, selected, onClick, found }: { task: Task; selected: boolean; onClick: () => void; found: boolean }) => {
   return (
     <button onClick={onClick}
       className={`group w-full text-left px-4 py-3 border-b border-zinc-800/50 transition-colors ${
@@ -693,12 +773,16 @@ const TaskRow = ({ task, selected, onClick }: { task: Task; selected: boolean; o
           </div>
           <p className="text-[13px] font-medium text-zinc-100 tracking-tight truncate">{task.product}</p>
         </div>
-        <StatusBadge status={task.status} label={task.status} size="sm" pulse={task.status === 'running'} />
+        <div className="flex items-center gap-1.5 shrink-0">
+          {found && (
+            <span className="inline-flex items-center gap-0.5 h-5 px-1.5 rounded-full border bg-emerald-500/[0.06] border-emerald-500/15 text-emerald-300/90 text-[10.5px] font-medium tracking-[0.04em] uppercase">
+              <Icon name="check" className="w-2.5 h-2.5" /> Found
+            </span>
+          )}
+          <StatusBadge status={task.status} label={task.status} size="sm" pulse={task.status === 'running'} />
+        </div>
       </div>
       <div className="flex items-center gap-3 pl-[18px] text-[11px] text-zinc-500 font-mono tabular-nums">
-        {task.min > 0 && <span>{fmt(task.min)}</span>}
-        {task.min > 0 && task.max > 0 && <span className="text-zinc-700">→</span>}
-        {task.max > 0 && <span>{fmt(task.max)}</span>}
         <span className={`ml-auto px-1.5 py-px text-[10px] rounded font-sans ${
           selected ? 'text-zinc-400' : 'text-zinc-600 group-hover:text-zinc-400'
         }`}>#{task.id}</span>

@@ -1,4 +1,4 @@
-import { R as ReactDOM, j as jsxRuntimeExports, E as ErrorBoundary, r as reactExports, D as DashboardPage } from "./ErrorBoundary-DKVX_I-N.js";
+import { R as ReactDOM, j as jsxRuntimeExports, E as ErrorBoundary, r as reactExports, D as DashboardPage } from "./ErrorBoundary-D2UEI6XA.js";
 function parseLogLine(msg) {
   const time = (/* @__PURE__ */ new Date()).toTimeString().slice(0, 8);
   const match = msg.match(/^\[(INFO|DEBUG|WARN|SKIP|ACTION|SUCCESS|ERROR)\]\s*(.*)/);
@@ -13,8 +13,7 @@ function toEngineTasks(tasks) {
   return tasks.map((t) => ({
     keyword: t.keyword,
     target_name: t.product,
-    filters: [],
-    cost: t.min > 0 && t.max > 0 ? [t.min, t.max] : []
+    filters: []
   }));
 }
 function fromSessionTasks(raw) {
@@ -22,8 +21,6 @@ function fromSessionTasks(raw) {
     id: `t${i + 1}`,
     keyword: t.keyword ?? "",
     product: t.target_name ?? "",
-    min: t.cost?.[0] ?? 0,
-    max: t.cost?.[1] ?? 0,
     status: "idle"
   }));
 }
@@ -87,6 +84,9 @@ function DashboardApp() {
     window.api.saveSession(toEngineTasks(tasks));
     window.api.startBot(toEngineTasks(tasks));
   };
+  const handleTasksChanged = (tasks) => {
+    window.api.saveSession(toEngineTasks(tasks));
+  };
   const handleLogout = async () => {
     await window.api.logout();
     window.api.navigateTo("auth");
@@ -110,6 +110,7 @@ function DashboardApp() {
       version,
       initialTasks,
       onStartBot: handleStartBot,
+      onTasksChanged: handleTasksChanged,
       extraLogs: ipcLogs,
       updateStatus,
       user,
