@@ -2,10 +2,18 @@ import { resolve } from 'path'
 import { defineConfig, externalizeDepsPlugin } from 'electron-vite'
 import react from '@vitejs/plugin-react'
 import tailwindcss from '@tailwindcss/vite'
+import { config as loadDotenv } from 'dotenv'
+
+loadDotenv()
 
 export default defineConfig({
   main: {
     plugins: [externalizeDepsPlugin()],
+    define: {
+      'process.env.SUPABASE_URL':      JSON.stringify(process.env.SUPABASE_URL      ?? ''),
+      'process.env.SUPABASE_ANON_KEY': JSON.stringify(process.env.SUPABASE_ANON_KEY ?? ''),
+      'process.env.BOT_USERNAME':      JSON.stringify(process.env.BOT_USERNAME      ?? ''),
+    },
     build: {
       rollupOptions: {
         input: { index: resolve(__dirname, 'src/main.ts') },
