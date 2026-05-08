@@ -1,4 +1,4 @@
-import { R as ReactDOM, j as jsxRuntimeExports, E as ErrorBoundary, r as reactExports, D as DashboardPage } from "./ErrorBoundary-CIs8NLRM.js";
+import { R as ReactDOM, j as jsxRuntimeExports, E as ErrorBoundary, r as reactExports, D as DashboardPage } from "./ErrorBoundary-DKVX_I-N.js";
 function parseLogLine(msg) {
   const time = (/* @__PURE__ */ new Date()).toTimeString().slice(0, 8);
   const match = msg.match(/^\[(INFO|DEBUG|WARN|SKIP|ACTION|SUCCESS|ERROR)\]\s*(.*)/);
@@ -33,17 +33,23 @@ function DashboardApp() {
   const [initialTasks, setInitialTasks] = reactExports.useState(void 0);
   const [ipcLogs, setIpcLogs] = reactExports.useState([]);
   const [updateStatus, setUpdateStatus] = reactExports.useState("");
+  const [user, setUser] = reactExports.useState(null);
+  const [results, setResults] = reactExports.useState([]);
+  const [screenshotPath, setScreenshotPath] = reactExports.useState(null);
+  const [updateProgress, setUpdateProgress] = reactExports.useState(null);
   reactExports.useEffect(() => {
     Promise.all([
       window.api.loadSession().catch(() => null),
-      window.api.getVersion().catch(() => "")
-    ]).then(([session, ver]) => {
+      window.api.getVersion().catch(() => ""),
+      window.api.getSubscriptionStatus().catch(() => null)
+    ]).then(([session, ver, sub]) => {
       if (Array.isArray(session) && session.length > 0) {
         setInitialTasks(fromSessionTasks(session));
       } else {
         setInitialTasks([]);
       }
       setVersion(ver);
+      if (sub) setUser(sub.user);
     });
   }, []);
   reactExports.useEffect(() => {
@@ -54,19 +60,30 @@ function DashboardApp() {
       } catch {
       }
     });
-    const unDone = window.api.onDone(() => setBotState("idle"));
+    const unDone = window.api.onDone((path) => {
+      setBotState("idle");
+      setScreenshotPath(path);
+      setUpdateProgress(null);
+    });
     const unStatus = window.api.onUpdateStatus((text) => setUpdateStatus(text));
     const unError = window.api.onUpdateError((p) => {
       if (p.message) setUpdateStatus(`Update error: ${p.message}`);
+      setUpdateProgress(null);
     });
+    const unResult = window.api.onBotResult((d) => setResults((prev) => [...prev.slice(-499), d]));
+    const unProgress = window.api.onUpdateProgress((pct) => setUpdateProgress(pct));
     return () => {
       unLog();
       unDone();
       unStatus();
       unError();
+      unResult();
+      unProgress();
     };
   }, []);
   const handleStartBot = (tasks) => {
+    setResults([]);
+    setScreenshotPath(null);
     window.api.saveSession(toEngineTasks(tasks));
     window.api.startBot(toEngineTasks(tasks));
   };
@@ -94,7 +111,13 @@ function DashboardApp() {
       initialTasks,
       onStartBot: handleStartBot,
       extraLogs: ipcLogs,
-      updateStatus
+      updateStatus,
+      user,
+      results,
+      screenshotPath,
+      updateProgress,
+      onSendLogs: () => window.api.sendLogToTelegram(),
+      onViewScreenshot: (p) => window.api.openScreenshot(p)
     }
   );
 }

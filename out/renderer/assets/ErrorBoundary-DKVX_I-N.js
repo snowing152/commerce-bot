@@ -7097,7 +7097,12 @@ const iconPaths = {
     /* @__PURE__ */ jsxRuntimeExports.jsx("line", { x1: "12", y1: "16", x2: "12", y2: "12" }),
     /* @__PURE__ */ jsxRuntimeExports.jsx("line", { x1: "12", y1: "8", x2: "12.01", y2: "8" })
   ] }),
-  telegram: /* @__PURE__ */ jsxRuntimeExports.jsx("path", { d: "M21.5 4.5 2.5 12l5.5 2 2 6 3.5-4 5.5 4 3-15.5z M9.5 14.5l9-7-7 8.5" })
+  telegram: /* @__PURE__ */ jsxRuntimeExports.jsx("path", { d: "M21.5 4.5 2.5 12l5.5 2 2 6 3.5-4 5.5 4 3-15.5z M9.5 14.5l9-7-7 8.5" }),
+  image: /* @__PURE__ */ jsxRuntimeExports.jsxs(jsxRuntimeExports.Fragment, { children: [
+    /* @__PURE__ */ jsxRuntimeExports.jsx("rect", { x: "3", y: "3", width: "18", height: "18", rx: "2" }),
+    /* @__PURE__ */ jsxRuntimeExports.jsx("circle", { cx: "8.5", cy: "8.5", r: "1.5" }),
+    /* @__PURE__ */ jsxRuntimeExports.jsx("polyline", { points: "21 15 16 10 5 21" })
+  ] })
 };
 const Icon = ({ name, className = "w-4 h-4", strokeWidth = 1.5 }) => /* @__PURE__ */ jsxRuntimeExports.jsx(
   "svg",
@@ -7407,7 +7412,13 @@ function DashboardPage({
   initialTasks,
   onStartBot,
   extraLogs,
-  updateStatus
+  updateStatus,
+  user,
+  results = [],
+  screenshotPath,
+  updateProgress,
+  onSendLogs,
+  onViewScreenshot
 }) {
   const [tasks, setTasks] = reactExports.useState(() => initialTasks ?? []);
   const [selectedId, setSelectedId] = reactExports.useState(null);
@@ -7416,6 +7427,9 @@ function DashboardPage({
   const [filter, setFilter] = reactExports.useState("ALL");
   const [showNewTask, setShowNewTask] = reactExports.useState(false);
   const [stopNotice, setStopNotice] = reactExports.useState(false);
+  const [imgError, setImgError] = reactExports.useState(false);
+  const [ctxMenu, setCtxMenu] = reactExports.useState(null);
+  const [rightTab, setRightTab] = reactExports.useState("log");
   const logScrollRef = reactExports.useRef(null);
   reactExports.useEffect(() => {
     if (initialTasks && initialTasks.length > 0) {
@@ -7472,6 +7486,7 @@ function DashboardPage({
     setStopNotice(true);
     setTimeout(() => setStopNotice(false), 4e3);
   };
+  const deleteTask = (id) => setTasks((prev) => prev.filter((t) => t.id !== id));
   return /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "relative h-full w-full flex flex-col bg-zinc-950 text-zinc-200", children: [
     /* @__PURE__ */ jsxRuntimeExports.jsxs("header", { className: "h-11 shrink-0 flex items-center justify-between px-4 border-b border-zinc-800/70 bg-zinc-950/90 backdrop-blur", children: [
       /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex items-center gap-3", children: [
@@ -7480,9 +7495,29 @@ function DashboardPage({
           "v",
           version
         ] }),
-        updateStatus && /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "text-[10.5px] text-zinc-500 max-w-[240px] truncate", children: updateStatus })
+        updateStatus && /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "text-[10.5px] text-zinc-500 max-w-[200px] truncate", children: updateStatus }),
+        updateProgress !== null && updateProgress > 0 && /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex items-center gap-1.5", children: [
+          /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "w-[80px] h-1 bg-zinc-800 rounded-full overflow-hidden", children: /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "h-full bg-zinc-400 rounded-full transition-all", style: { width: `${updateProgress}%` } }) }),
+          /* @__PURE__ */ jsxRuntimeExports.jsxs("span", { className: "text-[10.5px] text-zinc-500 tabular-nums", children: [
+            updateProgress,
+            "%"
+          ] })
+        ] })
       ] }),
       /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex items-center gap-1.5", children: [
+        user && /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex items-center gap-2 mr-1", children: [
+          user.photo_url && !imgError ? /* @__PURE__ */ jsxRuntimeExports.jsx(
+            "img",
+            {
+              src: user.photo_url,
+              alt: user.first_name,
+              onError: () => setImgError(true),
+              className: "w-6 h-6 rounded-full object-cover ring-1 ring-zinc-700"
+            }
+          ) : /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "w-6 h-6 rounded-full bg-zinc-700 flex items-center justify-center text-[10px] font-semibold text-zinc-300 ring-1 ring-zinc-600", children: user.first_name.charAt(0).toUpperCase() }),
+          /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "text-[12px] text-zinc-400 max-w-[96px] truncate", children: user.first_name })
+        ] }),
+        /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "w-px h-4 bg-zinc-800 mx-0.5" }),
         /* @__PURE__ */ jsxRuntimeExports.jsx(Button, { variant: "ghost", size: "sm", onClick: onOpenSubscription, leadingIcon: /* @__PURE__ */ jsxRuntimeExports.jsx(Icon, { name: "crown", className: "w-3.5 h-3.5" }), children: "Subscription" }),
         /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "w-px h-4 bg-zinc-800 mx-1" }),
         /* @__PURE__ */ jsxRuntimeExports.jsx(Button, { variant: "ghost", size: "sm", onClick: onLogout, leadingIcon: /* @__PURE__ */ jsxRuntimeExports.jsx(Icon, { name: "logout", className: "w-3.5 h-3.5" }), children: "Logout" })
@@ -7509,7 +7544,10 @@ function DashboardPage({
           }
         ),
         /* @__PURE__ */ jsxRuntimeExports.jsxs("ul", { className: "flex-1 overflow-y-auto", children: [
-          tasks.map((t) => /* @__PURE__ */ jsxRuntimeExports.jsx("li", { children: /* @__PURE__ */ jsxRuntimeExports.jsx(TaskRow, { task: t, selected: selectedId === t.id, onClick: () => setSelectedId(t.id) }) }, t.id)),
+          tasks.map((t) => /* @__PURE__ */ jsxRuntimeExports.jsx("li", { onContextMenu: (e) => {
+            e.preventDefault();
+            setCtxMenu({ x: e.clientX, y: e.clientY, taskId: t.id });
+          }, children: /* @__PURE__ */ jsxRuntimeExports.jsx(TaskRow, { task: t, selected: selectedId === t.id, onClick: () => setSelectedId(t.id) }) }, t.id)),
           /* @__PURE__ */ jsxRuntimeExports.jsx("li", { className: "px-4 py-6 text-center", children: /* @__PURE__ */ jsxRuntimeExports.jsxs("button", { onClick: () => setShowNewTask(true), className: "text-[12px] text-zinc-500 hover:text-zinc-300 inline-flex items-center gap-1.5", children: [
             /* @__PURE__ */ jsxRuntimeExports.jsx(Icon, { name: "plus", className: "w-3 h-3" }),
             " Add task"
@@ -7517,30 +7555,39 @@ function DashboardPage({
         ] })
       ] }),
       /* @__PURE__ */ jsxRuntimeExports.jsxs("section", { className: "flex flex-col min-h-0 bg-zinc-950", children: [
-        /* @__PURE__ */ jsxRuntimeExports.jsx(
-          SectionHeader,
-          {
-            title: "Live Log",
-            subtitle: `${allLogs.length} lines · ${autoscroll ? "tailing" : "paused"}`,
-            right: /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex items-center gap-1", children: [
-              ["ALL", "INFO", "WARN", "ERROR", "SUCCESS"].map((lvl) => /* @__PURE__ */ jsxRuntimeExports.jsxs(
-                "button",
-                {
-                  onClick: () => setFilter(lvl),
-                  className: `h-6 px-2 text-[10.5px] font-semibold tracking-[0.04em] rounded-md transition-colors ${filter === lvl ? "bg-zinc-800 text-zinc-100" : "text-zinc-500 hover:text-zinc-300 hover:bg-zinc-800/50"}`,
-                  children: [
-                    lvl,
-                    lvl !== "ALL" && /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "ml-1 text-zinc-600 tabular-nums", children: counts[lvl] ?? 0 })
-                  ]
-                },
-                lvl
-              )),
-              /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "w-px h-4 bg-zinc-800 mx-1" }),
-              /* @__PURE__ */ jsxRuntimeExports.jsx(Button, { variant: "ghost", size: "sm", onClick: () => setLocalLogs([]), children: "Clear" })
-            ] })
-          }
-        ),
-        /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { ref: logScrollRef, onScroll: onLogScroll, className: "flex-1 overflow-y-auto py-2", children: [
+        /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "h-10 shrink-0 flex items-center justify-between px-4 border-b border-zinc-800/70", children: [
+          /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "flex items-center gap-0.5", children: ["log", "results"].map((tab) => /* @__PURE__ */ jsxRuntimeExports.jsxs(
+            "button",
+            {
+              onClick: () => setRightTab(tab),
+              className: `h-7 px-3 text-[12px] font-medium rounded-md transition-colors flex items-center gap-1.5 ${rightTab === tab ? "bg-zinc-800 text-zinc-100" : "text-zinc-500 hover:text-zinc-300 hover:bg-zinc-800/50"}`,
+              children: [
+                tab === "log" ? "Live Log" : "Results",
+                tab === "log" && /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "text-[10.5px] text-zinc-600 tabular-nums", children: allLogs.length }),
+                tab === "results" && results.length > 0 && /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "text-[10.5px] bg-zinc-700 text-zinc-300 rounded px-1 tabular-nums", children: results.length })
+              ]
+            },
+            tab
+          )) }),
+          rightTab === "log" && /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex items-center gap-1", children: [
+            ["ALL", "INFO", "WARN", "ERROR", "SUCCESS"].map((lvl) => /* @__PURE__ */ jsxRuntimeExports.jsxs(
+              "button",
+              {
+                onClick: () => setFilter(lvl),
+                className: `h-6 px-2 text-[10.5px] font-semibold tracking-[0.04em] rounded-md transition-colors ${filter === lvl ? "bg-zinc-800 text-zinc-100" : "text-zinc-500 hover:text-zinc-300 hover:bg-zinc-800/50"}`,
+                children: [
+                  lvl,
+                  lvl !== "ALL" && /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "ml-1 text-zinc-600 tabular-nums", children: counts[lvl] ?? 0 })
+                ]
+              },
+              lvl
+            )),
+            /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "w-px h-4 bg-zinc-800 mx-1" }),
+            /* @__PURE__ */ jsxRuntimeExports.jsx(Button, { variant: "ghost", size: "sm", onClick: onSendLogs, leadingIcon: /* @__PURE__ */ jsxRuntimeExports.jsx(Icon, { name: "send", className: "w-3 h-3" }), children: "TG" }),
+            /* @__PURE__ */ jsxRuntimeExports.jsx(Button, { variant: "ghost", size: "sm", onClick: () => setLocalLogs([]), children: "Clear" })
+          ] })
+        ] }),
+        rightTab === "log" && /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { ref: logScrollRef, onScroll: onLogScroll, className: "flex-1 overflow-y-auto py-2", children: [
           filteredLogs.map((line) => /* @__PURE__ */ jsxRuntimeExports.jsx(LogLine, { time: line.time, level: line.level, source: line.source, message: line.message }, line.id)),
           filteredLogs.length === 0 && /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "px-4 py-10 text-center", children: [
             /* @__PURE__ */ jsxRuntimeExports.jsx(Icon, { name: "terminal", className: "w-5 h-5 text-zinc-700 mx-auto mb-2" }),
@@ -7550,7 +7597,26 @@ function DashboardPage({
               "."
             ] })
           ] })
-        ] })
+        ] }),
+        rightTab === "results" && /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "flex-1 overflow-y-auto", children: results.length === 0 ? /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "px-4 py-10 text-center", children: [
+          /* @__PURE__ */ jsxRuntimeExports.jsx(Icon, { name: "target", className: "w-5 h-5 text-zinc-700 mx-auto mb-2" }),
+          /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "text-[12px] text-zinc-500", children: "No results yet. Start the bot to see matches here." })
+        ] }) : /* @__PURE__ */ jsxRuntimeExports.jsxs("table", { className: "w-full text-[12px]", children: [
+          /* @__PURE__ */ jsxRuntimeExports.jsx("thead", { children: /* @__PURE__ */ jsxRuntimeExports.jsxs("tr", { className: "border-b border-zinc-800/70 text-zinc-500 text-[10.5px] uppercase tracking-wider", children: [
+            /* @__PURE__ */ jsxRuntimeExports.jsx("th", { className: "px-4 py-2 text-left font-semibold w-10", children: "#" }),
+            /* @__PURE__ */ jsxRuntimeExports.jsx("th", { className: "px-4 py-2 text-left font-semibold w-24", children: "Date" }),
+            /* @__PURE__ */ jsxRuntimeExports.jsx("th", { className: "px-4 py-2 text-left font-semibold", children: "Keyword" }),
+            /* @__PURE__ */ jsxRuntimeExports.jsx("th", { className: "px-4 py-2 text-left font-semibold", children: "Product" }),
+            /* @__PURE__ */ jsxRuntimeExports.jsx("th", { className: "px-4 py-2 text-left font-semibold w-36", children: "Location" })
+          ] }) }),
+          /* @__PURE__ */ jsxRuntimeExports.jsx("tbody", { children: results.map((r) => /* @__PURE__ */ jsxRuntimeExports.jsxs("tr", { className: "border-b border-zinc-800/40 hover:bg-zinc-900/40", children: [
+            /* @__PURE__ */ jsxRuntimeExports.jsx("td", { className: "px-4 py-2 text-zinc-600 tabular-nums", children: r.id }),
+            /* @__PURE__ */ jsxRuntimeExports.jsx("td", { className: "px-4 py-2 text-zinc-500 tabular-nums whitespace-nowrap", children: r.date }),
+            /* @__PURE__ */ jsxRuntimeExports.jsx("td", { className: "px-4 py-2 text-zinc-300 max-w-[140px]", children: /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "block truncate", children: r.keyword }) }),
+            /* @__PURE__ */ jsxRuntimeExports.jsx("td", { className: "px-4 py-2 text-zinc-100 max-w-[200px]", children: /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "block truncate", children: r.targetName }) }),
+            /* @__PURE__ */ jsxRuntimeExports.jsx("td", { className: "px-4 py-2 text-zinc-400 max-w-[140px]", children: /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "block truncate", children: r.location }) })
+          ] }, r.id)) })
+        ] }) })
       ] })
     ] }),
     /* @__PURE__ */ jsxRuntimeExports.jsxs("footer", { className: "h-12 shrink-0 flex items-center gap-4 px-4 border-t border-zinc-800/70 bg-zinc-950/90", children: [
@@ -7588,6 +7654,16 @@ function DashboardPage({
         )
       ] }),
       /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "w-px h-5 bg-zinc-800" }),
+      screenshotPath && /* @__PURE__ */ jsxRuntimeExports.jsx(
+        Button,
+        {
+          variant: "ghost",
+          size: "md",
+          onClick: () => onViewScreenshot?.(screenshotPath),
+          leadingIcon: /* @__PURE__ */ jsxRuntimeExports.jsx(Icon, { name: "image", className: "w-3.5 h-3.5" }),
+          children: "View screenshot"
+        }
+      ),
       /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "flex-1 flex items-center gap-3 min-w-0", children: stopNotice ? /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "text-[11.5px] text-amber-300", children: "Stop is not available — close the window to abort." }) : /* @__PURE__ */ jsxRuntimeExports.jsxs(jsxRuntimeExports.Fragment, { children: [
         /* @__PURE__ */ jsxRuntimeExports.jsx(
           StatusBadge,
@@ -7608,7 +7684,29 @@ function DashboardPage({
         )
       ] }) })
     ] }),
-    showNewTask && /* @__PURE__ */ jsxRuntimeExports.jsx(NewTaskDialog, { onClose: () => setShowNewTask(false), onSubmit: addTask })
+    showNewTask && /* @__PURE__ */ jsxRuntimeExports.jsx(NewTaskDialog, { onClose: () => setShowNewTask(false), onSubmit: addTask }),
+    ctxMenu && /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "fixed inset-0 z-40", onClick: () => setCtxMenu(null), children: /* @__PURE__ */ jsxRuntimeExports.jsx(
+      "div",
+      {
+        style: { top: ctxMenu.y, left: ctxMenu.x },
+        className: "absolute z-50 min-w-[140px] rounded-md border border-zinc-700 bg-zinc-900 shadow-xl py-1",
+        onClick: (e) => e.stopPropagation(),
+        children: /* @__PURE__ */ jsxRuntimeExports.jsxs(
+          "button",
+          {
+            className: "w-full text-left px-3 py-1.5 text-[12.5px] text-red-400 hover:bg-zinc-800 flex items-center gap-2",
+            onClick: () => {
+              deleteTask(ctxMenu.taskId);
+              setCtxMenu(null);
+            },
+            children: [
+              /* @__PURE__ */ jsxRuntimeExports.jsx(Icon, { name: "x", className: "w-3.5 h-3.5" }),
+              " Delete task"
+            ]
+          }
+        )
+      }
+    ) })
   ] });
 }
 function NewTaskDialog({

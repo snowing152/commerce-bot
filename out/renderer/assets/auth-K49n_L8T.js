@@ -1,4 +1,4 @@
-import { R as ReactDOM, j as jsxRuntimeExports, E as ErrorBoundary, r as reactExports, A as AuthPage } from "./ErrorBoundary-CIs8NLRM.js";
+import { R as ReactDOM, j as jsxRuntimeExports, E as ErrorBoundary, r as reactExports, A as AuthPage } from "./ErrorBoundary-DKVX_I-N.js";
 function AuthApp() {
   const [status, setStatus] = reactExports.useState("idle");
   const [token, setToken] = reactExports.useState("");
