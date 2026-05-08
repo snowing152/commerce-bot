@@ -9,8 +9,6 @@ import { Humanizer, getFreePort, isCDPReady, waitForCDP } from "./utils";
 export interface Task {
   keyword: string;
   target_name: string;
-  filters?: string[];
-  cost?: string[];
 }
 
 export interface BotSettings {
@@ -18,10 +16,6 @@ export interface BotSettings {
   max_pages_to_search?: number;
   headless?: boolean;
   browser_path?: string;
-  supabase_url?: string;
-  supabase_key?: string;
-  supabase_table?: string;
-  supabase_allow_service_role?: boolean;
 }
 
 export interface BotConfig {
@@ -99,12 +93,6 @@ export class AutomationEngine {
   public onLog?: (msg: string) => void;
   public onResult?: (data: BotResult) => void;
 
-  // Utility to mask secrets before logging
-  private maskSecret(value: string): string {
-    if (value.length <= 8) return "***";
-    return `${value.slice(0, 8)}***`;
-  }
-
   // Internal logging helper
   private log(msg: string) {
     console.log(msg); // Keep console output for local debugging
@@ -159,120 +147,6 @@ export class AutomationEngine {
     }
   }
 
-  private async writeNotFoundFallback(record: any, reason: string) {
-    const filePath = path.join(this.userDataPath, "not_found.jsonl");
-    const payload = { ...record, reason };
-    try {
-      await fs.appendFile(filePath, `${JSON.stringify(payload)}\n`);
-      this.logStep(
-        "INFO",
-        `Not-found saved locally (${reason}).`,
-        "writeNotFoundFallback",
-      );
-    } catch (e: any) {
-      this.logStep(
-        "ERROR",
-        `Failed to save not-found: ${e.message}`,
-        "writeNotFoundFallback",
-      );
-    }
-  }
-
-  private getSupabaseKeyRole(key: string): string | null {
-    const parts = key.split(".");
-    if (parts.length !== 3) return null;
-    try {
-      const payload = JSON.parse(
-        Buffer.from(parts[1], "base64").toString("utf-8"),
-      );
-      return payload?.role || null;
-    } catch (error) {
-      const errMessage = error instanceof Error ? error.message : String(error);
-      // Explicitly notify that the provided token was invalid
-      this.logStep(
-        "ERROR",
-        `Failed to parse Supabase JWT payload: ${errMessage}`,
-        "getSupabaseKeyRole",
-      );
-      return null;
-    }
-  }
-
-  private async saveNotFoundToSupabase(record: any) {
-    const settings = this.config.settings;
-    const supabaseUrl = settings.supabase_url || process.env.SUPABASE_URL;
-    const supabaseKey = settings.supabase_key || process.env.SUPABASE_ANON_KEY;
-    const supabaseTable = settings.supabase_table || "not_found_products";
-    const allowServiceRole = settings.supabase_allow_service_role === true;
-
-    if (!supabaseUrl || !supabaseKey) {
-      await this.writeNotFoundFallback(record, "supabase_not_configured");
-      return;
-    }
-
-    const maskedSupabaseKey = this.maskSecret(supabaseKey);
-    const sanitizeLogText = (text: string) =>
-      text.split(supabaseKey).join(maskedSupabaseKey).slice(0, 200);
-
-    const keyRole = this.getSupabaseKeyRole(supabaseKey);
-    if (keyRole === "service_role" && !allowServiceRole) {
-      this.logStep(
-        "ERROR",
-        "Supabase service_role key is blocked. Use an anon key.",
-        "saveNotFoundToSupabase",
-      );
-      await this.writeNotFoundFallback(record, "supabase_service_role_blocked");
-      return;
-    }
-
-    if (typeof fetch !== "function") {
-      await this.writeNotFoundFallback(record, "fetch_unavailable");
-      return;
-    }
-
-    const endpoint = `${String(supabaseUrl).replace(/\/$/, "")}/rest/v1/${supabaseTable}`;
-
-    try {
-      const response = await fetch(endpoint, {
-        method: "POST",
-        headers: {
-          apikey: supabaseKey,
-          Authorization: `Bearer ${supabaseKey}`,
-          "Content-Type": "application/json",
-          Prefer: "return=minimal",
-        },
-        body: JSON.stringify(record),
-      });
-
-      if (!response.ok) {
-        const rawError = await response.text().catch(() => "");
-        const safeError = sanitizeLogText(rawError);
-        await this.writeNotFoundFallback(record, `supabase_${response.status}`);
-        this.logStep(
-          "ERROR",
-          `Supabase error: ${response.status} ${safeError}`,
-          "saveNotFoundToSupabase",
-        );
-        return;
-      }
-
-      this.logStep(
-        "SUCCESS",
-        "Not-found saved to Supabase.",
-        "saveNotFoundToSupabase",
-      );
-    } catch (e: any) {
-      await this.writeNotFoundFallback(record, "supabase_exception");
-      const rawMessage = e?.message ? String(e.message) : String(e);
-      const safeMessage = sanitizeLogText(rawMessage);
-      this.logStep(
-        "ERROR",
-        `Supabase exception: ${safeMessage}`,
-        "saveNotFoundToSupabase",
-      );
-    }
-  }
-
   private async reportNotFound(
     task: Task,
     page: Page,
@@ -284,25 +158,22 @@ export class AutomationEngine {
     let pageTitle = "";
     try {
       pageTitle = await page.title();
-    } catch (_) {
-      pageTitle = "";
+    } catch (_) {}
+
+    const lines = [
+      `=== NOT FOUND ===`,
+      `keyword: ${task.keyword}`,
+      `target_name: ${task.target_name}`,
+      `pages_reached: ${pageNumberReached}/${maxPagesToSearch}`,
+      `cards_scanned: ${cardsScanned}`,
+      `search_time_ms: ${searchTimeMs}`,
+      `search_url: ${page.url()}`,
+      `page_title: ${pageTitle}`,
+      `=================`,
+    ];
+    for (const line of lines) {
+      this.logStep("WARN", line, "reportNotFound");
     }
-
-    const record = {
-      keyword: task.keyword,
-      target_name: task.target_name,
-      search_url: page.url(),
-      page_title: pageTitle,
-      filters: task.filters || [],
-      cost: task.cost || [],
-      search_time_ms: searchTimeMs,
-      max_pages_to_search: maxPagesToSearch,
-      page_number_reached: pageNumberReached,
-      cards_scanned: cardsScanned,
-      created_at: new Date().toISOString(),
-    };
-
-    await this.saveNotFoundToSupabase(record);
   }
 
   private async loadConfigs() {
@@ -408,9 +279,10 @@ export class AutomationEngine {
         `--remote-debugging-port=${this.currentDebugPort}`,
         `--remote-debugging-address=127.0.0.1`,
         `--user-data-dir=${profileDir}`,
+        // --incognito is a no-op next to --user-data-dir on Chrome; kept to
+        // document intent. Edge's -inprivate / Firefox's --private were forcing
+        // ephemeral mode and triggering Coupang's RET9999 anti-bot block.
         "--incognito",
-        "-inprivate",
-        "--private",
         "--no-first-run",
         "--no-default-browser-check",
         "--disable-extensions",
@@ -493,359 +365,6 @@ export class AutomationEngine {
     } catch (_) {
       return false;
     }
-  }
-
-  private async expandAllFilters(root: Page | Locator) {
-    const moreBtns = root.locator(
-      'button:has-text("더보기"), .search-filter-options-more, .btn-more-filter, .filter-function-bar-list-btn:has-text("더보기")',
-    );
-
-    // Some sections reveal additional "+ 더보기" buttons after expansion,
-    // so do a few passes instead of a single static count.
-    for (let pass = 0; pass < 6; pass++) {
-      const count = await this.safeExecute(
-        moreBtns.count(),
-        "counting 'more' buttons",
-        0,
-      );
-
-      if (count === 0) break;
-      if (pass === 0) {
-        this.logStep(
-          "INFO",
-          `Found ${count} "more filters" buttons.`,
-          "expandAllFilters",
-        );
-      }
-
-      let clickedAny = false;
-      for (let i = 0; i < count; i++) {
-        const isVisible = await this.safeExecute(
-          moreBtns.nth(i).isVisible({ timeout: 500 }),
-          `checking visibility of 'more' button ${i}`,
-          false,
-        );
-        if (!isVisible) continue;
-
-        try {
-          this.logStep(
-            "ACTION",
-            `Clicking "more filters" (${i + 1}/${count}).`,
-            "expandAllFilters",
-          );
-          await moreBtns.nth(i).click({ timeout: 3000 });
-          clickedAny = true;
-          await Humanizer.wait(300, 600);
-        } catch (error) {
-          const errMessage =
-            error instanceof Error ? error.message : String(error);
-          this.logStep(
-            "ERROR",
-            `Could not click "more filters" button ${i}: ${errMessage}`,
-            "expandAllFilters",
-          );
-        }
-      }
-
-      if (!clickedAny) break;
-    }
-  }
-
-  private async applyFilters(page: Page, filters: string[]) {
-    if (!filters?.length) return;
-    const clickTimeoutMs = 3500;
-    const normalizeText = (text: string) =>
-      text.normalize("NFC").replace(/\s+/g, " ").trim();
-    const escapeRegExp = (text: string) =>
-      text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-    const makeExactMatcher = (text: string) => {
-      const normalized = normalizeText(text);
-      const exactWithSpaces = escapeRegExp(normalized).replace(/\s+/g, "\\s+");
-      return new RegExp(`^\\s*${exactWithSpaces}\\s*$`, "i");
-    };
-    this.logStep(
-      "INFO",
-      `Applying filters: ${filters.join(", ")}`,
-      "applyFilters",
-    );
-    await Humanizer.wait(1500, 2500);
-
-    // 1. Locate the filter panel so we do not click the whole page.
-    // On Coupang, filters typically live in #searchOptionForm or .search-filters.
-    const filterPanel = page
-      .locator(
-        "#searchOptionForm, .search-filter-options, .search-filters, .filter-function-bar",
-      )
-      .first();
-
-    const panelCount = await this.safeExecute(
-      filterPanel.count(),
-      "counting filter panel",
-      0,
-    );
-    const searchRoot = panelCount > 0 ? filterPanel : page;
-
-    if (panelCount === 0) {
-      this.logStep(
-        "WARN",
-        "Filter panel not found. Falling back to page-level filter search.",
-        "applyFilters",
-      );
-    }
-
-    // 2. Expand hidden filter groups within the detected filter area.
-    await this.expandAllFilters(searchRoot);
-
-    for (const f of filters) {
-      // Coupang can re-fold sections after each filter application.
-      await this.expandAllFilters(searchRoot);
-      await Humanizer.wait(200, 400);
-
-      let clicked = false;
-      const filterLower = f.toLowerCase();
-      const matcher = makeExactMatcher(f);
-      const filterText = normalizeText(f);
-
-      if (!filterText) {
-        this.logStep("WARN", "Empty filter value. Skipping.", "applyFilters");
-        continue;
-      }
-
-      const tryClick = async (loc: Locator, label: string) => {
-        const totalCandidates = await this.safeExecute(
-          loc.count(),
-          `counting filter candidates (${label})`,
-          0,
-        );
-
-        for (let i = 0; i < Math.min(totalCandidates, 6); i++) {
-          const el = loc.nth(i);
-          const isVisible = await this.safeExecute(
-            el.isVisible({ timeout: 500 }),
-            `checking filter visibility (${label})`,
-            false,
-          );
-          if (!isVisible) continue;
-
-          const cls = (await el.getAttribute("class").catch(() => "")) || "";
-          const parentClass =
-            (await el
-              .locator("xpath=ancestor::li[1]")
-              .getAttribute("class")
-              .catch(() => "")) || "";
-          if (cls.includes("disabled") || parentClass.includes("disabled")) {
-            continue;
-          }
-
-          if (cls.includes("selected") || parentClass.includes("selected")) {
-            this.logStep(
-              "DEBUG",
-              `Filter is already selected (${label}).`,
-              "applyFilters",
-            );
-            return true;
-          }
-
-          await el.scrollIntoViewIfNeeded().catch(() => undefined);
-          await Humanizer.move(page, el);
-          let normalErr = "";
-          let forceErr = "";
-          try {
-            await el.click({ timeout: clickTimeoutMs });
-            return true;
-          } catch (error) {
-            normalErr = error instanceof Error ? error.message : String(error);
-
-            // Some filter labels toggle via the asset icon inside the label.
-            try {
-              const asset = el.locator("i.filter-function-bar-asset").first();
-              const assetVisible = await asset
-                .isVisible({ timeout: 300 })
-                .catch(() => false);
-              if (assetVisible) {
-                await asset.click({ timeout: 1000, force: true });
-                return true;
-              }
-            } catch (_) {}
-
-            // Fallback when the label is covered by sticky elements or transitions.
-            try {
-              await el.click({ timeout: 1000, force: true });
-              return true;
-            } catch (forceError) {
-              forceErr =
-                forceError instanceof Error
-                  ? forceError.message
-                  : String(forceError);
-
-              // Final fallback: invoke native click without Playwright actionability checks.
-              const nativeClicked = await el
-                .evaluate((node) => {
-                  (node as HTMLElement).click();
-                  return true;
-                })
-                .catch(() => false);
-              if (nativeClicked) {
-                return true;
-              }
-
-              this.logStep(
-                "DEBUG",
-                `Failed to click filter (${label}). normal="${normalErr}" force="${forceErr}"`,
-                "applyFilters",
-              );
-            }
-          }
-        }
-
-        return false;
-      };
-
-      // STEP 1: Check hardcoded/system filters (Delivery, Availability).
-      // These are often icon-based or complex, so we use explicit locators.
-      if (
-        filterLower.includes("품절") ||
-        filterLower.includes("out of stock")
-      ) {
-        const el = searchRoot
-          .locator(
-            "label.search-filter-exclude-out-of-stock, input#outOfStockProduct + label",
-          )
-          .first();
-        clicked = await tryClick(el, "out of stock");
-      } else if (
-        filterLower.includes("rocket") ||
-        filterLower.includes("로켓")
-      ) {
-        const el = searchRoot
-          .locator('label[data-component-name*="deliveryFilterOption-rocket"]')
-          .first();
-        clicked = await tryClick(el, "rocket");
-      } else if (
-        filterLower.includes("무료배송") ||
-        filterLower.includes("free shipping")
-      ) {
-        const el = searchRoot
-          .locator('label[data-component-name*="deliveryFilterOption-free"]')
-          .first();
-        clicked = await tryClick(el, "free shipping");
-      } else if (
-        filterLower.includes("새 상품") ||
-        filterLower.includes("new product")
-      ) {
-        const el = searchRoot
-          .locator(".filter-function-bar-attribute label:not(.disabled)", {
-            hasText: /^\s*새\s*상품\s*$/,
-          })
-          .first();
-        clicked = await tryClick(el, "new product");
-      }
-
-      if (clicked) {
-        this.logStep(
-          "SUCCESS",
-          `Filter found and applied: "${f}"`,
-          "applyFilters",
-        );
-      }
-
-      // STEP 2: Dynamic/semantic search (sizes, brands, colors, materials, ratings).
-      if (!clicked) {
-        const textLocators = [
-          searchRoot
-            .locator(".filter-function-bar-attribute label:not(.disabled)")
-            .filter({ hasText: matcher }),
-          searchRoot
-            .locator(".filter-function-bar-rating label:not(.disabled)")
-            .filter({ hasText: matcher }),
-          searchRoot
-            .locator(".filter-function-bar-category a")
-            .filter({ hasText: matcher }),
-          searchRoot
-            .locator("label:not(.disabled)")
-            .filter({ hasText: matcher }),
-          searchRoot.locator("a").filter({ hasText: matcher }),
-          searchRoot.locator("button").filter({ hasText: matcher }),
-        ];
-
-        for (const loc of textLocators) {
-          const clickedHere = await tryClick(loc, "text");
-          if (clickedHere) {
-            clicked = true;
-            this.logStep(
-              "SUCCESS",
-              `Filter found and applied: "${f}"`,
-              "applyFilters",
-            );
-            break;
-          }
-        }
-      }
-
-      // Wait for the product list to reload after a click.
-      if (clicked) {
-        await page
-          .waitForLoadState("domcontentloaded", { timeout: 5000 })
-          .catch(() => undefined);
-        await Humanizer.wait(1500, 2500);
-      } else {
-        this.logStep(
-          "WARN",
-          `Filter not found: "${f}". Skipping.`,
-          "applyFilters",
-        );
-      }
-    }
-  }
-
-  private async applyCost(page: Page, costFilters: string[]) {
-    if (!costFilters?.length) return;
-    this.logStep(
-      "INFO",
-      `Applying price filters: ${costFilters.join(", ")}`,
-      "applyCost",
-    );
-    const norm = (s: string) => s.replace(/\s+/g, " ").trim();
-    for (const ct of costFilters) {
-      try {
-        await page.evaluate(() =>
-          window.scrollTo({
-            top: document.body.scrollHeight * 0.7,
-            behavior: "smooth",
-          }),
-        );
-        await Humanizer.wait(1500, 2000);
-        let clicked = false;
-        const all = page.locator(".filter-function-bar-price-item");
-        const cnt = await all.count().catch(() => 0);
-        for (let i = 0; i < cnt; i++) {
-          const txt = await all
-            .nth(i)
-            .innerText({ timeout: 1000 })
-            .catch(() => "");
-          if (norm(txt) === norm(ct) || norm(txt).includes(norm(ct))) {
-            await Humanizer.move(page, all.nth(i));
-            await all.nth(i).click();
-            await page.waitForLoadState("domcontentloaded", { timeout: 15000 });
-            await Humanizer.wait(1500, 2500);
-            this.logStep(
-              "SUCCESS",
-              `Price filter applied: "${norm(txt)}"`,
-              "applyCost",
-            );
-            clicked = true;
-            break;
-          }
-        }
-        if (!clicked) {
-          this.logStep("DEBUG", `Price filter not found: "${ct}"`, "applyCost");
-        }
-      } catch (e: any) {
-        this.logStep("ERROR", `Price filter error: ${e.message}`, "applyCost");
-      }
-    }
-    await page.evaluate(() => window.scrollTo({ top: 0, behavior: "smooth" }));
-    await Humanizer.wait(800, 1500);
   }
 
   async run(): Promise<string | null> {
@@ -1031,13 +550,30 @@ export class AutomationEngine {
         await Humanizer.wait(2000, 4000);
         this.logStep("INFO", `Search results URL: ${page.url()}`, "run");
 
-        if ((await page.title()).includes("Access Denied")) {
-          this.logStep("ERROR", "Blocked by site.", "run");
+        const pageTitle = await page.title();
+        if (pageTitle.includes("Access Denied") || pageTitle.includes("Robot")) {
+          this.logStep("ERROR", "Blocked by site (Access Denied).", "run");
           break;
         }
 
-        if (task.filters?.length) await this.applyFilters(page, task.filters);
-        if (task.cost?.length) await this.applyCost(page, task.cost);
+        const bodyText = await page
+          .evaluate(() => document.body?.innerText?.slice(0, 500) || "")
+          .catch(() => "");
+        if (/"rCode"\s*:\s*"RET\d+"/.test(bodyText)) {
+          this.logStep(
+            "ERROR",
+            `SEARCH_BLOCKED keyword="${task.keyword}" body="${bodyText.slice(0, 200).replace(/\s+/g, " ")}"`,
+            "run",
+          );
+          await page
+            .goto(this.config.settings.base_url, {
+              waitUntil: "load",
+              timeout: 30000,
+            })
+            .catch(() => undefined);
+          await Humanizer.wait(3000, 5000);
+          continue;
+        }
 
         let found = false;
         const maxP = this.config.settings.max_pages_to_search || 3;
