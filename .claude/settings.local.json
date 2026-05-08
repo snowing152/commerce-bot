@@ -1,7 +1,9 @@
 {
   "permissions": {
     "allow": [
-      "Bash(npx tsc *)"
+      "Bash(npx tsc *)",
+      "Bash(Get-ChildItem -Path \"c:\\\\Users\\\\maksi\\\\Desktop\\\\ecommerce-bot\" -Force)",
+      "Bash(Select-Object Name, Mode)"
     ]
   }
 }
