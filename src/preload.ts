@@ -28,4 +28,26 @@ contextBridge.exposeInMainWorld("api", {
       attempt: number | null;
     }) => void,
   ) => ipcRenderer.on("update-error", (_event, payload) => callback(payload)),
+  // Auth
+  loginWithTelegram: (tgUser: object) =>
+    ipcRenderer.invoke("login-with-telegram", tgUser),
+  getBotUsername: () => ipcRenderer.invoke("get-bot-username"),
+
+  // Subscription
+  getSubscriptionStatus: () => ipcRenderer.invoke("get-subscription-status"),
+  openPaymentBot: () => ipcRenderer.invoke("open-payment-bot"),
+  onSubscriptionUpdated: (cb: () => void) =>
+    ipcRenderer.on("subscription-updated", cb),
+
+  // Navigation
+  navigateTo: (page: string) => ipcRenderer.invoke("navigate-to", page),
+
+  // Logout
+  logout: () => ipcRenderer.invoke("logout"),
+
+  startTelegramAuth: () => ipcRenderer.invoke("start-telegram-auth"),
+  checkAuthToken: (token: string) =>
+    ipcRenderer.invoke("check-auth-token", token),
+  clearChromeDebugProfile: () =>
+    ipcRenderer.invoke("clear-chrome-debug-profile"),
 });

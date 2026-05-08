@@ -1,0 +1,807 @@
+<!doctype html>
+<html lang="ru">
+  <head>
+    <meta charset="UTF-8" />
+    <title>Coupang Bot — Подписка</title>
+    <link
+      href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600&family=Space+Mono:wght@400;700&display=swap"
+      rel="stylesheet"
+    />
+    <style>
+      :root {
+        --bg: #0d0f14;
+        --surface: #161a24;
+        --surface2: #1e2330;
+        --border: rgba(255, 255, 255, 0.07);
+        --accent: #2b7fff;
+        --accent-glow: rgba(43, 127, 255, 0.25);
+        --green: #22c55e;
+        --amber: #f59e0b;
+        --red: #ef4444;
+        --text: #e8eaf0;
+        --muted: #6b7280;
+        --radius: 14px;
+      }
+
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+
+      body {
+        font-family: "DM Sans", sans-serif;
+        background: var(--bg);
+        color: var(--text);
+        min-height: 100vh;
+        padding: 24px 20px 40px;
+        position: relative;
+      }
+
+      body::before {
+        content: "";
+        position: fixed;
+        top: -150px;
+        right: -100px;
+        width: 500px;
+        height: 500px;
+        background: radial-gradient(
+          ellipse,
+          rgba(43, 127, 255, 0.08) 0%,
+          transparent 70%
+        );
+        pointer-events: none;
+      }
+
+      .grid-lines {
+        position: fixed;
+        inset: 0;
+        background-image: linear-gradient(
+            rgba(255, 255, 255, 0.015) 1px,
+            transparent 1px
+          ),
+          linear-gradient(
+            90deg,
+            rgba(255, 255, 255, 0.015) 1px,
+            transparent 1px
+          );
+        background-size: 40px 40px;
+        pointer-events: none;
+        z-index: 0;
+      }
+
+      .page {
+        max-width: 480px;
+        margin: 0 auto;
+        position: relative;
+        z-index: 1;
+      }
+
+      /* Top bar */
+      .topbar {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        margin-bottom: 28px;
+        animation: fadeUp 0.4s ease forwards;
+        opacity: 0;
+      }
+
+      .topbar-brand {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+      }
+
+      .topbar-icon {
+        width: 36px;
+        height: 36px;
+        background: linear-gradient(135deg, var(--accent), #1a5fd0);
+        border-radius: 10px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 16px;
+        box-shadow: 0 4px 12px var(--accent-glow);
+      }
+
+      .topbar-name {
+        font-family: "Space Mono", monospace;
+        font-size: 14px;
+        font-weight: 700;
+        color: var(--text);
+      }
+
+      .user-pill {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        background: var(--surface);
+        border: 1px solid var(--border);
+        border-radius: 99px;
+        padding: 6px 12px 6px 6px;
+        font-size: 13px;
+      }
+
+      .user-avatar {
+        width: 24px;
+        height: 24px;
+        border-radius: 50%;
+        background: linear-gradient(135deg, #6366f1, #8b5cf6);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 11px;
+        font-weight: 700;
+        color: white;
+        overflow: hidden;
+      }
+
+      .user-avatar img {
+        width: 100%;
+        height: 100%;
+        object-fit: cover;
+      }
+
+      /* Cards */
+      .card {
+        background: var(--surface);
+        border: 1px solid var(--border);
+        border-radius: var(--radius);
+        padding: 24px;
+        margin-bottom: 16px;
+        box-shadow: 0 8px 24px rgba(0, 0, 0, 0.2);
+      }
+
+      .card:nth-child(1) {
+        animation: fadeUp 0.45s 0.1s ease forwards;
+        opacity: 0;
+      }
+
+      .card:nth-child(2) {
+        animation: fadeUp 0.45s 0.2s ease forwards;
+        opacity: 0;
+      }
+
+      .card:nth-child(3) {
+        animation: fadeUp 0.45s 0.3s ease forwards;
+        opacity: 0;
+      }
+
+      @keyframes fadeUp {
+        from {
+          opacity: 0;
+          transform: translateY(16px);
+        }
+        to {
+          opacity: 1;
+          transform: translateY(0);
+        }
+      }
+
+      /* Status Banner */
+      .status-banner {
+        border-radius: 10px;
+        padding: 16px 20px;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        margin-bottom: 20px;
+      }
+
+      .status-banner.trial {
+        background: rgba(245, 158, 11, 0.1);
+        border: 1px solid rgba(245, 158, 11, 0.2);
+      }
+
+      .status-banner.active {
+        background: rgba(34, 197, 94, 0.1);
+        border: 1px solid rgba(34, 197, 94, 0.2);
+      }
+
+      .status-banner.expired {
+        background: rgba(239, 68, 68, 0.08);
+        border: 1px solid rgba(239, 68, 68, 0.2);
+      }
+
+      .status-left {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+      }
+
+      .status-dot {
+        width: 10px;
+        height: 10px;
+        border-radius: 50%;
+        flex-shrink: 0;
+      }
+
+      .trial .status-dot {
+        background: var(--amber);
+        box-shadow: 0 0 8px var(--amber);
+        animation: blink 2s ease infinite;
+      }
+
+      .active .status-dot {
+        background: var(--green);
+        box-shadow: 0 0 8px var(--green);
+      }
+
+      .expired .status-dot {
+        background: var(--red);
+      }
+
+      @keyframes blink {
+        0%,
+        100% {
+          opacity: 1;
+        }
+        50% {
+          opacity: 0.4;
+        }
+      }
+
+      .status-label {
+        font-size: 14px;
+        font-weight: 600;
+      }
+
+      .trial .status-label {
+        color: var(--amber);
+      }
+
+      .active .status-label {
+        color: var(--green);
+      }
+
+      .expired .status-label {
+        color: var(--red);
+      }
+
+      .status-sub {
+        font-size: 12px;
+        color: var(--muted);
+        margin-top: 2px;
+      }
+
+      .days-badge {
+        font-family: "Space Mono", monospace;
+        font-size: 22px;
+        font-weight: 700;
+        line-height: 1;
+      }
+
+      .days-badge span {
+        font-family: "DM Sans", sans-serif;
+        font-size: 11px;
+        font-weight: 400;
+        color: var(--muted);
+        display: block;
+        text-align: right;
+        margin-top: 2px;
+      }
+
+      .trial .days-badge {
+        color: var(--amber);
+      }
+
+      .active .days-badge {
+        color: var(--green);
+      }
+
+      /* Progress bar */
+      .progress-wrap {
+        margin-bottom: 20px;
+      }
+
+      .progress-label {
+        display: flex;
+        justify-content: space-between;
+        font-size: 12px;
+        color: var(--muted);
+        margin-bottom: 8px;
+      }
+
+      .progress-track {
+        height: 6px;
+        background: var(--surface2);
+        border-radius: 99px;
+        overflow: hidden;
+      }
+
+      .progress-fill {
+        height: 100%;
+        border-radius: 99px;
+        transition: width 0.8s ease;
+      }
+
+      .trial .progress-fill {
+        background: linear-gradient(90deg, var(--amber), #fbbf24);
+      }
+
+      .active .progress-fill {
+        background: linear-gradient(90deg, var(--green), #4ade80);
+      }
+
+      /* Plan card */
+      .plan-card {
+        background: var(--surface2);
+        border: 1px solid var(--border);
+        border-radius: 12px;
+        padding: 20px;
+        position: relative;
+        overflow: hidden;
+      }
+
+      .plan-card::before {
+        content: "";
+        position: absolute;
+        top: 0;
+        left: 0;
+        right: 0;
+        height: 2px;
+        background: linear-gradient(90deg, var(--accent), #6366f1);
+      }
+
+      .plan-header {
+        display: flex;
+        align-items: flex-start;
+        justify-content: space-between;
+        margin-bottom: 16px;
+      }
+
+      .plan-name {
+        font-family: "Space Mono", monospace;
+        font-size: 13px;
+        font-weight: 700;
+        color: var(--accent);
+        text-transform: uppercase;
+        letter-spacing: 1px;
+      }
+
+      .plan-price {
+        text-align: right;
+      }
+
+      .plan-price .amount {
+        font-family: "Space Mono", monospace;
+        font-size: 24px;
+        font-weight: 700;
+        color: var(--text);
+        line-height: 1;
+      }
+
+      .plan-price .period {
+        font-size: 12px;
+        color: var(--muted);
+        margin-top: 2px;
+      }
+
+      .plan-features {
+        list-style: none;
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+        margin-bottom: 0;
+      }
+
+      .plan-features li {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        font-size: 13px;
+        color: #9ca3b0;
+      }
+
+      .plan-features li .icon {
+        width: 18px;
+        height: 18px;
+        border-radius: 5px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 10px;
+        flex-shrink: 0;
+        background: rgba(43, 127, 255, 0.12);
+        color: var(--accent);
+      }
+
+      /* Buttons */
+      .btn {
+        display: block;
+        width: 100%;
+        padding: 13px 20px;
+        border: none;
+        border-radius: 10px;
+        font-family: "DM Sans", sans-serif;
+        font-size: 14px;
+        font-weight: 600;
+        cursor: pointer;
+        transition: all 0.2s ease;
+        text-align: center;
+        letter-spacing: 0.2px;
+      }
+
+      .btn-primary {
+        background: var(--accent);
+        color: white;
+        box-shadow: 0 4px 16px var(--accent-glow);
+        margin-top: 16px;
+      }
+
+      .btn-primary:hover {
+        background: #3b8bff;
+        transform: translateY(-1px);
+        box-shadow: 0 6px 20px var(--accent-glow);
+      }
+
+      .btn-primary:active {
+        transform: translateY(0);
+      }
+
+      .btn-primary:disabled {
+        opacity: 0.5;
+        cursor: not-allowed;
+        transform: none;
+      }
+
+      .btn-ghost {
+        background: transparent;
+        color: var(--muted);
+        border: 1px solid var(--border);
+        margin-top: 8px;
+      }
+
+      .btn-ghost:hover {
+        color: var(--text);
+        border-color: rgba(255, 255, 255, 0.15);
+        background: var(--surface2);
+      }
+
+      .btn-success {
+        background: linear-gradient(135deg, #16a34a, #22c55e);
+        color: white;
+        margin-top: 16px;
+        box-shadow: 0 4px 16px rgba(34, 197, 94, 0.2);
+      }
+
+      .btn-success:hover {
+        transform: translateY(-1px);
+        box-shadow: 0 6px 20px rgba(34, 197, 94, 0.3);
+      }
+
+      /* Telegram pay row */
+      .tg-pay-note {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 6px;
+        margin-top: 10px;
+        font-size: 12px;
+        color: var(--muted);
+      }
+
+      .tg-icon {
+        width: 16px;
+        height: 16px;
+        background: #229ed9;
+        border-radius: 4px;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 9px;
+        color: white;
+        font-weight: 700;
+      }
+
+      /* Section title */
+      .section-title {
+        font-family: "Space Mono", monospace;
+        font-size: 10px;
+        font-weight: 700;
+        color: var(--muted);
+        text-transform: uppercase;
+        letter-spacing: 1.5px;
+        margin-bottom: 16px;
+      }
+
+      /* Loading overlay */
+      #loadingOverlay {
+        position: fixed;
+        inset: 0;
+        background: var(--bg);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        z-index: 100;
+        transition: opacity 0.3s ease;
+      }
+
+      #loadingOverlay.hidden {
+        opacity: 0;
+        pointer-events: none;
+      }
+
+      .spinner {
+        width: 32px;
+        height: 32px;
+        border: 3px solid var(--border);
+        border-top-color: var(--accent);
+        border-radius: 50%;
+        animation: spin 0.8s linear infinite;
+      }
+
+      @keyframes spin {
+        to {
+          transform: rotate(360deg);
+        }
+      }
+
+      /* Toast */
+      .toast {
+        position: fixed;
+        bottom: 24px;
+        left: 50%;
+        transform: translateX(-50%) translateY(80px);
+        background: var(--surface);
+        border: 1px solid var(--border);
+        border-radius: 99px;
+        padding: 10px 20px;
+        font-size: 13px;
+        color: var(--text);
+        box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+        transition: transform 0.3s ease;
+        z-index: 200;
+        white-space: nowrap;
+      }
+
+      .toast.show {
+        transform: translateX(-50%) translateY(0);
+      }
+    </style>
+  </head>
+  <body>
+    <div class="grid-lines"></div>
+    <div id="loadingOverlay"><div class="spinner"></div></div>
+    <div id="toast" class="toast"></div>
+
+    <div class="page">
+      <!-- Top bar -->
+      <div class="topbar">
+        <div class="topbar-brand">
+          <div class="topbar-icon">🛒</div>
+          <span class="topbar-name">Coupang Bot</span>
+        </div>
+        <div class="user-pill">
+          <div class="user-avatar" id="userAvatar">?</div>
+          <span id="userName">Загрузка...</span>
+        </div>
+      </div>
+
+      <!-- Status Card -->
+      <div class="card" id="statusCard">
+        <div class="section-title">Статус подписки</div>
+
+        <div class="status-banner trial" id="statusBanner">
+          <div class="status-left">
+            <div class="status-dot"></div>
+            <div>
+              <div class="status-label" id="statusLabel">Пробный период</div>
+              <div class="status-sub" id="statusSub">Активен</div>
+            </div>
+          </div>
+          <div class="days-badge" id="daysBadge">
+            30
+            <span id="daysLabel">осталось</span>
+          </div>
+        </div>
+
+        <div class="progress-wrap" id="progressWrap">
+          <div class="progress-label">
+            <span id="progressStart">Начало</span>
+            <span id="progressEnd">Конец</span>
+          </div>
+          <div class="progress-track" id="progressTrack">
+            <div
+              class="progress-fill"
+              id="progressFill"
+              style="width: 0%"
+            ></div>
+          </div>
+        </div>
+
+        <button class="btn btn-success" id="btnContinue">
+          ▶ Продолжить работу
+        </button>
+      </div>
+
+      <!-- Plan card — shown only when trial ending or expired -->
+      <div class="card" id="planCard" style="display: none">
+        <div class="section-title">Тарифный план</div>
+
+        <div class="plan-card">
+          <div class="plan-header">
+            <div>
+              <div class="plan-name">Pro</div>
+              <div
+                style="
+                  font-size: 12px;
+                  color: var(--muted);
+                  margin-top: 4px;
+                "
+              >
+                Полный доступ
+              </div>
+            </div>
+            <div class="plan-price">
+              <div class="amount" id="planPrice">₩9,900</div>
+              <div class="period">в месяц</div>
+            </div>
+          </div>
+
+          <ul class="plan-features">
+            <li>
+              <span class="icon">∞</span>Неограниченное количество запусков
+            </li>
+            <li><span class="icon">⚡</span>Автоматические обновления</li>
+            <li><span class="icon">🔍</span>До 10 товаров за сеанс</li>
+            <li><span class="icon">📸</span>Сохранение скриншотов</li>
+          </ul>
+        </div>
+
+        <button class="btn btn-primary" id="btnPay">
+          💳 Оплатить через Telegram
+        </button>
+        <div class="tg-pay-note">
+          <span class="tg-icon">✈</span>
+          Безопасная оплата через Telegram Bot
+        </div>
+      </div>
+
+      <!-- Logout -->
+      <div class="card">
+        <button class="btn btn-ghost" id="btnLogout">Выйти из аккаунта</button>
+      </div>
+    </div>
+
+    <script>
+      // ─────────────────────────────────────────────
+      // On load: fetch user + subscription data
+      // ─────────────────────────────────────────────
+      window.addEventListener("DOMContentLoaded", async () => {
+        try {
+          const data = await window.api.getSubscriptionStatus();
+          renderSubscription(data);
+        } catch (e) {
+          showToast("Ошибка загрузки данных");
+        } finally {
+          document.getElementById("loadingOverlay").classList.add("hidden");
+        }
+      });
+
+      // ─────────────────────────────────────────────
+      // Render subscription state
+      // data: { user, status, daysLeft, trialEnd, subEnd, price }
+      // status: 'trial' | 'active' | 'expired'
+      // ─────────────────────────────────────────────
+      function renderSubscription(data) {
+        const { user, status, daysLeft, trialStart, periodEnd, price } = data;
+
+        // User info
+        document.getElementById("userName").textContent =
+          user.first_name || "Пользователь";
+        const avatarEl = document.getElementById("userAvatar");
+        if (user.photo_url) {
+          avatarEl.innerHTML = `<img src="${user.photo_url}" alt="" />`;
+        } else {
+          avatarEl.textContent = (user.first_name || "?")[0].toUpperCase();
+        }
+
+        // Plan price
+        if (price) document.getElementById("planPrice").textContent = price;
+
+        const banner = document.getElementById("statusBanner");
+        const label = document.getElementById("statusLabel");
+        const sub = document.getElementById("statusSub");
+        const badge = document.getElementById("daysBadge");
+        const daysLabelEl = document.getElementById("daysLabel");
+        const progressFill = document.getElementById("progressFill");
+        const progressWrap = document.getElementById("progressWrap");
+        const progressStart = document.getElementById("progressStart");
+        const progressEnd = document.getElementById("progressEnd");
+        const btnContinue = document.getElementById("btnContinue");
+        const planCard = document.getElementById("planCard");
+
+        banner.className = "status-banner " + status;
+
+        if (status === "trial") {
+          label.textContent = "Пробный период";
+          sub.textContent =
+            daysLeft > 0 ? `Активен` : "Последний день";
+          badge.childNodes[0].textContent = daysLeft;
+          daysLabelEl.textContent = "дней";
+
+          const total = 30;
+          const used = total - daysLeft;
+          const pct = Math.min(100, Math.round((used / total) * 100));
+          progressFill.style.width = pct + "%";
+          progressStart.textContent = formatDate(trialStart);
+          progressEnd.textContent = formatDate(periodEnd);
+
+          // Show plan card if ≤7 days left
+          if (daysLeft <= 7) planCard.style.display = "block";
+          btnContinue.style.display = "block";
+        } else if (status === "active") {
+          label.textContent = "Подписка активна";
+          sub.textContent = "Pro план";
+          badge.childNodes[0].textContent = daysLeft;
+          daysLabelEl.textContent = "дней";
+          progressFill.style.width =
+            Math.max(5, Math.min(100, (daysLeft / 30) * 100)) + "%";
+          progressStart.textContent = "Начало";
+          progressEnd.textContent = formatDate(periodEnd);
+          btnContinue.style.display = "block";
+          planCard.style.display = "none";
+        } else {
+          // expired
+          label.textContent = "Подписка истекла";
+          sub.textContent = "Требуется оплата";
+          badge.childNodes[0].textContent = "0";
+          daysLabelEl.textContent = "дней";
+          progressFill.style.width = "100%";
+          progressWrap.style.display = "none";
+          btnContinue.disabled = true;
+          btnContinue.textContent = "Доступ ограничен";
+          planCard.style.display = "block";
+        }
+      }
+
+      function formatDate(iso) {
+        if (!iso) return "—";
+        const d = new Date(iso);
+        return d.toLocaleDateString("ru-RU", {
+          day: "numeric",
+          month: "short",
+        });
+      }
+
+      // ─────────────────────────────────────────────
+      // Buttons
+      // ─────────────────────────────────────────────
+      document.getElementById("btnContinue").addEventListener("click", () => {
+        window.api.navigateTo("main"); // Opens index.html / main app view
+      });
+
+      document.getElementById("btnPay").addEventListener("click", async () => {
+        try {
+          // Tells main process to open Telegram payment bot link
+          await window.api.openPaymentBot();
+          showToast("Переход в Telegram для оплаты...");
+        } catch (e) {
+          showToast("Ошибка. Попробуйте снова.");
+        }
+      });
+
+      document.getElementById("btnLogout").addEventListener("click", async () => {
+        await window.api.logout();
+        window.api.navigateTo("auth");
+      });
+
+      // Listen for subscription update (e.g., after Telegram bot payment callback)
+      window.api.onSubscriptionUpdated(async () => {
+        showToast("Подписка обновлена! 🎉");
+        const data = await window.api.getSubscriptionStatus();
+        renderSubscription(data);
+      });
+
+      // Toast helper
+      function showToast(msg) {
+        const t = document.getElementById("toast");
+        t.textContent = msg;
+        t.classList.add("show");
+        setTimeout(() => t.classList.remove("show"), 3000);
+      }
+    </script>
+  </body>
+</html>
