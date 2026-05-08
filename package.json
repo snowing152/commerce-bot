@@ -1,12 +1,13 @@
 {
   "name": "coupang-bot",
-  "version": "1.3.8",
-  "main": "dist/main.js",
+  "version": "1.3.9",
+  "main": "out/main/index.js",
   "scripts": {
-    "clean": "node -e \"const fs = require('fs'); fs.rmSync('dist', { recursive: true, force: true }); fs.rmSync('release', { recursive: true, force: true });\"",
-    "build": "tsc&& copyfiles -f src/*.html dist/",
-    "pack": "npm run clean && npm run build && electron-builder --win --x64",
-    "start": "npm run build && electron .",
+    "clean": "node -e \"const fs = require('fs'); fs.rmSync('out', { recursive: true, force: true }); fs.rmSync('release', { recursive: true, force: true });\"",
+    "dev": "electron-vite dev",
+    "build": "electron-vite build",
+    "start": "electron .",
+    "pack": "npm run clean && electron-vite build && electron-builder --win --x64",
     "test": "jest"
   },
   "dependencies": {
@@ -15,17 +16,24 @@
     "electron-store": "^7.0.3",
     "electron-updater": "^6.8.3",
     "node-telegram-bot-api": "^0.63.0",
-    "patchright": "^1.58.2"
+    "patchright": "^1.58.2",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1"
   },
   "devDependencies": {
+    "@tailwindcss/vite": "^4.1.7",
     "@types/jest": "^30.0.0",
     "@types/node": "^20.0.0",
     "@types/node-telegram-bot-api": "^0.64.14",
+    "@types/react": "^18.3.23",
+    "@types/react-dom": "^18.3.7",
+    "@vitejs/plugin-react": "^4.5.2",
     "concurrently": "^9.2.1",
-    "copyfiles": "^2.4.1",
     "electron": "^41.0.4",
     "electron-builder": "^26.8.1",
+    "electron-vite": "^3.1.0",
     "jest": "^30.3.0",
+    "tailwindcss": "^4.1.7",
     "ts-jest": "^29.4.6",
     "tsx": "^4.7.0",
     "typescript": "^5.9.3"
@@ -58,20 +66,8 @@
     ],
     "compression": "maximum",
     "files": [
-      "dist/**/*",
-      "config/**/*",
-      "src/index.html",
-      "src/*.html"
-    ],
-    "extraFiles": [
-      {
-        "from": "src/auth.html",
-        "to": "dist/auth.html"
-      },
-      {
-        "from": "src/subscription.html",
-        "to": "dist/subscription.html"
-      }
+      "out/**/*",
+      "config/**/*"
     ]
   }
 }
