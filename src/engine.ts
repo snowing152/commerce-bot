@@ -469,11 +469,13 @@ export class AutomationEngine {
 
   private async isAdCard(card: Locator): Promise<boolean> {
     try {
-      const [adTextCount, adClassCount] = await Promise.all([
+      const [enCount, koCount, ariaCount, classCount] = await Promise.all([
         card.locator('span:has-text("AD")').count(),
+        card.locator('span:has-text("광고")').count(),
+        card.locator('button[aria-label="Ad information"]').count(),
         card.locator('[class*="AdMark"]').count(),
       ]);
-      return adTextCount > 0 || adClassCount > 0;
+      return enCount > 0 || koCount > 0 || ariaCount > 0 || classCount > 0;
     } catch (_) {
       return false;
     }
