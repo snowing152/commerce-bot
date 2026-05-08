@@ -9,7 +9,6 @@ interface EngineTask {
   keyword: string
   target_name: string
   filters: string[]
-  cost: number[]
 }
 
 function parseLogLine(msg: string): LogEntry {
@@ -28,7 +27,6 @@ function toEngineTasks(tasks: Task[]): EngineTask[] {
     keyword: t.keyword,
     target_name: t.product,
     filters: [],
-    cost: t.min > 0 && t.max > 0 ? [t.min, t.max] : [],
   }))
 }
 
@@ -37,8 +35,6 @@ function fromSessionTasks(raw: EngineTask[]): Task[] {
     id: `t${i + 1}`,
     keyword: t.keyword ?? '',
     product: t.target_name ?? '',
-    min: t.cost?.[0] ?? 0,
-    max: t.cost?.[1] ?? 0,
     status: 'idle' as const,
   }))
 }
@@ -97,6 +93,10 @@ function DashboardApp() {
     window.api.startBot(toEngineTasks(tasks))
   }
 
+  const handleTasksChanged = (tasks: Task[]) => {
+    window.api.saveSession(toEngineTasks(tasks))
+  }
+
   const handleLogout = async () => {
     await window.api.logout()
     window.api.navigateTo('auth')
@@ -126,6 +126,7 @@ function DashboardApp() {
       version={version}
       initialTasks={initialTasks}
       onStartBot={handleStartBot}
+      onTasksChanged={handleTasksChanged}
       extraLogs={ipcLogs}
       updateStatus={updateStatus}
       user={user}
