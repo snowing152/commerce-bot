@@ -129,7 +129,7 @@ export async function getSubscriptionStatus(telegramId: number) {
     daysLeft: data.days_left,
     trialStart: data.trial_start,
     periodEnd: data.period_end,
-    price: "₩9,900",
+    price: "₩10,000",
   };
 }
 

@@ -19,7 +19,7 @@ function SubscriptionApp() {
       const expires = data.periodEnd
         ? new Date(data.periodEnd).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
         : '—'
-      setSubInfo({ plan: 'Pro', price: data.price ?? '₩29,000 / mo', expires, daysLeft: data.daysLeft ?? 0 })
+      setSubInfo({ plan: 'Pro', price: data.price ?? '₩10,000 / mo', expires, daysLeft: data.daysLeft ?? 0 })
     } catch (err) {
       setFetchError(err instanceof Error ? err.message : 'Could not load subscription data.')
     } finally {
