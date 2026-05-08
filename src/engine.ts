@@ -53,6 +53,8 @@ export class AutomationEngine {
   // Store the active port so launch and connect use the same value
   private currentDebugPort = 9222;
   private resultCounter = 0;
+  private cancelled = false;
+  private browserKilled = false;
   private browserProcess: ChildProcess | null = null;
 
   private userDataPath: string;
@@ -120,6 +122,56 @@ export class AutomationEngine {
       location,
     };
     if (this.onResult) this.onResult(payload);
+  }
+
+  public cancel(): void {
+    if (this.cancelled) return;
+    this.cancelled = true;
+    this.logStep("WARN", "Stop requested by user. Winding down...", "cancel");
+  }
+
+  // Cleanly tear down a browser we spawned. On Windows, plain SIGTERM only
+  // signals the parent — renderer/helper children stay alive and hold the
+  // user-data-dir lock. taskkill /T /F walks the tree.
+  private async killBrowserProcess(): Promise<void> {
+    if (!this.browserProcess || this.browserKilled) return;
+    const pid = this.browserProcess.pid;
+    this.browserKilled = true;
+    if (!pid) return;
+
+    try {
+      if (process.platform === "win32") {
+        await new Promise<void>((resolve) => {
+          const killer = spawn("taskkill", ["/pid", String(pid), "/T", "/F"], {
+            stdio: "ignore",
+            windowsHide: true,
+          });
+          killer.once("exit", () => resolve());
+          killer.once("error", () => resolve());
+        });
+      } else {
+        this.browserProcess.kill();
+      }
+    } catch (error) {
+      const errMessage = error instanceof Error ? error.message : String(error);
+      this.logStep(
+        "ERROR",
+        `Failed to terminate browser ${pid}: ${errMessage}`,
+        "killBrowserProcess",
+      );
+    }
+  }
+
+  // Like Humanizer.wait, but bails out early on cancellation so Stop feels
+  // responsive during long inter-task pauses.
+  private async cancellableWait(min: number, max: number): Promise<void> {
+    const total = Math.floor(Math.random() * (max - min + 1) + min);
+    const start = Date.now();
+    while (Date.now() - start < total) {
+      if (this.cancelled) return;
+      const remaining = total - (Date.now() - start);
+      await new Promise((r) => setTimeout(r, Math.min(150, remaining)));
+    }
   }
 
   /**
@@ -210,24 +262,39 @@ export class AutomationEngine {
     if (platform === "win32") {
       const localAppData =
         process.env.LOCALAPPDATA || path.join(os.homedir(), "AppData", "Local");
+      const programFiles = process.env["ProgramFiles"] || "C:\\Program Files";
+      const programFilesX86 =
+        process.env["ProgramFiles(x86)"] || "C:\\Program Files (x86)";
 
       defaultPaths.push(
-        "C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe",
-        "C:\\Program Files (x86)\\Google\\Chrome\\Application\\chrome.exe",
-        path.join(
-          localAppData,
-          "Google",
-          "Chrome",
-          "Application",
-          "chrome.exe",
-        ),
-        "C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe",
-        "C:\\Program Files\\Microsoft\\Edge\\Application\\msedge.exe",
+        // Chrome (most reliable for stealth — preferred)
+        path.join(programFiles, "Google", "Chrome", "Application", "chrome.exe"),
+        path.join(programFilesX86, "Google", "Chrome", "Application", "chrome.exe"),
+        path.join(localAppData, "Google", "Chrome", "Application", "chrome.exe"),
+        // Edge
+        path.join(programFilesX86, "Microsoft", "Edge", "Application", "msedge.exe"),
+        path.join(programFiles, "Microsoft", "Edge", "Application", "msedge.exe"),
+        // Brave
+        path.join(programFiles, "BraveSoftware", "Brave-Browser", "Application", "brave.exe"),
+        path.join(programFilesX86, "BraveSoftware", "Brave-Browser", "Application", "brave.exe"),
+        path.join(localAppData, "BraveSoftware", "Brave-Browser", "Application", "brave.exe"),
+        // Vivaldi
+        path.join(localAppData, "Vivaldi", "Application", "vivaldi.exe"),
+        path.join(programFiles, "Vivaldi", "Application", "vivaldi.exe"),
+        // Opera / Opera GX
+        path.join(localAppData, "Programs", "Opera", "opera.exe"),
+        path.join(localAppData, "Programs", "Opera GX", "opera.exe"),
+        // Chromium
+        path.join(localAppData, "Chromium", "Application", "chrome.exe"),
       );
     } else if (platform === "darwin") {
       defaultPaths.push(
         "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
         "/Applications/Microsoft Edge.app/Contents/MacOS/Microsoft Edge",
+        "/Applications/Brave Browser.app/Contents/MacOS/Brave Browser",
+        "/Applications/Vivaldi.app/Contents/MacOS/Vivaldi",
+        "/Applications/Opera.app/Contents/MacOS/Opera",
+        "/Applications/Chromium.app/Contents/MacOS/Chromium",
       );
     }
 
@@ -238,6 +305,25 @@ export class AutomationEngine {
     throw new Error(
       "Browser executable path not found. Set CHROME_PATH, provide browser_path in config.json, or install Google Chrome.",
     );
+  }
+
+  // Map a resolved executable path to a friendly name and the browser's
+  // private-browsing CLI flag. Chrome and forks like Brave/Vivaldi/Chromium
+  // use --incognito; Edge uses -inprivate; Opera uses --private.
+  private static detectBrowser(
+    browserPath: string,
+  ): { name: string; privateFlag: string } {
+    const p = browserPath.toLowerCase();
+    if (/msedge|microsoft[\\/ ]edge/.test(p))
+      return { name: "Edge", privateFlag: "-inprivate" };
+    if (/brave/.test(p)) return { name: "Brave", privateFlag: "--incognito" };
+    if (/opera/.test(p)) return { name: "Opera", privateFlag: "--private" };
+    if (/vivaldi/.test(p))
+      return { name: "Vivaldi", privateFlag: "--incognito" };
+    if (/chromium/.test(p))
+      return { name: "Chromium", privateFlag: "--incognito" };
+    if (/chrome/.test(p)) return { name: "Chrome", privateFlag: "--incognito" };
+    return { name: "Unknown Chromium-based", privateFlag: "--incognito" };
   }
 
   private async launchBrowser() {
@@ -253,13 +339,35 @@ export class AutomationEngine {
       const browserPath = this.findBrowserPath(
         this.config?.settings?.browser_path,
       );
+      const { name: browserName, privateFlag } =
+        AutomationEngine.detectBrowser(browserPath);
       this.logStep(
         "INFO",
-        `Found browser executable at: ${browserPath}`,
+        `Found browser executable at: ${browserPath} (${browserName} — using ${privateFlag})`,
         "launchBrowser",
       );
+      if (browserName !== "Chrome") {
+        this.logStep(
+          "WARN",
+          `${browserName} private mode is more likely to trigger Coupang RET9999 than Chrome incognito. If searches start getting blocked, install Chrome.`,
+          "launchBrowser",
+        );
+      }
 
       const profileDir = path.join(this.userDataPath, "chrome_debug_profile");
+      // Wipe any leftover profile from a prior run so each launch starts
+      // clean — same end result as incognito for our purposes, without
+      // tripping Coupang's RET9999 anti-bot (which true --incognito does).
+      try {
+        await fs.rm(profileDir, { recursive: true, force: true });
+      } catch (error) {
+        const errMessage = error instanceof Error ? error.message : String(error);
+        this.logStep(
+          "WARN",
+          `Could not wipe profile before launch (continuing): ${errMessage}`,
+          "launchBrowser",
+        );
+      }
       if (!existsSync(profileDir)) {
         try {
           await fs.mkdir(profileDir, { recursive: true });
@@ -279,15 +387,19 @@ export class AutomationEngine {
         `--remote-debugging-port=${this.currentDebugPort}`,
         `--remote-debugging-address=127.0.0.1`,
         `--user-data-dir=${profileDir}`,
-        // --incognito is a no-op next to --user-data-dir on Chrome; kept to
-        // document intent. Edge's -inprivate / Firefox's --private were forcing
-        // ephemeral mode and triggering Coupang's RET9999 anti-bot block.
-        "--incognito",
+        // Real incognito: --incognito + a starting URL forces Chrome to open
+        // the URL in an incognito window (the visible badge appears). Without
+        // the URL, Chrome often ignores --incognito for new-tab windows.
+        // Note: incognito is a known anti-bot signal. If Coupang starts
+        // returning RET9999, drop --incognito and rely on the per-run profile
+        // wipe instead.
+        privateFlag,
         "--no-first-run",
         "--no-default-browser-check",
         "--disable-extensions",
         "--lang=ko-KR",
         "--new-window",
+        "https://www.coupang.com",
       ];
 
       this.logStep(
@@ -416,6 +528,11 @@ export class AutomationEngine {
     }
 
     const contexts = browser.contexts();
+    this.logStep(
+      "DEBUG",
+      `Browser exposed ${contexts.length} context(s) over CDP. (2 expected if --incognito took effect: default + incognito)`,
+      "run",
+    );
     const ctx: BrowserContext | undefined =
       contexts.find((c) => c.pages().length > 0) ?? contexts[0];
 
@@ -500,6 +617,10 @@ export class AutomationEngine {
     try {
       let shouldStopRun = false;
       for (const task of this.config.tasks) {
+        if (this.cancelled) {
+          shouldStopRun = true;
+          break;
+        }
         if (shouldStopRun) break;
         if (!(await recoverPageIfClosed())) {
           shouldStopRun = true;
@@ -589,6 +710,10 @@ export class AutomationEngine {
         );
 
         for (let pageNum = 1; pageNum <= maxP; pageNum++) {
+          if (this.cancelled) {
+            shouldStopRun = true;
+            break;
+          }
           if (!(await recoverPageIfClosed())) {
             shouldStopRun = true;
             break;
@@ -613,6 +738,10 @@ export class AutomationEngine {
 
           let nonAdCount = 0;
           for (let i = 0; i < count; i++) {
+            if (this.cancelled) {
+              shouldStopRun = true;
+              break;
+            }
             if (!(await recoverPageIfClosed())) {
               shouldStopRun = true;
               break;
@@ -839,7 +968,7 @@ export class AutomationEngine {
         }
         const pause = Math.floor(Math.random() * 6 + 5);
         this.logStep("DEBUG", `Pausing ${pause}s before next task.`, "run");
-        await Humanizer.wait(pause * 1000, pause * 1000 + 4000);
+        await this.cancellableWait(pause * 1000, pause * 1000 + 4000);
       }
 
       if (shouldStopRun) {
@@ -909,11 +1038,7 @@ export class AutomationEngine {
           await browser.close();
         } catch (_) {}
       }
-      if (this.browserProcess && !this.browserProcess.killed) {
-        try {
-          this.browserProcess.kill();
-        } catch (_) {}
-      }
+      await this.killBrowserProcess();
     }
   }
 }

@@ -15,9 +15,6 @@ function getSupabase() {
   return _supabase;
 }
 
-// ── Pending auth tokens ─────────────────────────────────────
-const pendingTokens = new Map<string, any>();
-
 // ── Bot-based login (no widget) ─────────────────────────────
 export async function startTelegramAuth(): Promise<string> {
   const token = crypto.randomBytes(16).toString("hex");

@@ -155,10 +155,7 @@ export interface SubscriptionPageProps {
 }
 
 export function SubscriptionPage({ planStatus, onBack, onRenew, subscriptionInfo }: SubscriptionPageProps) {
-  const defaults = planStatus === 'active'
-    ? { plan: 'Pro', price: '₩29,000 / mo', expires: 'Jun 14, 2026', daysLeft: 37 }
-    : { plan: 'Pro', price: '₩29,000 / mo', expires: 'Apr 02, 2026', daysLeft: -36 }
-  const data = subscriptionInfo ?? defaults
+  const data = subscriptionInfo ?? { plan: 'Pro', price: '—', expires: '—', daysLeft: 0 }
 
   return (
     <div className="h-full w-full overflow-y-auto bg-[radial-gradient(circle_at_50%_-10%,rgba(255,255,255,0.03),transparent_60%)]">
@@ -259,6 +256,9 @@ export interface DashboardPageProps {
   updateProgress?: number | null
   onSendLogs?: () => void
   onViewScreenshot?: (path: string) => void
+  onStopBot?: () => void
+  onClearResults?: () => void
+  onExportResults?: () => void
 }
 
 const seedLogs = (count = 40): LogEntry[] => {
@@ -296,6 +296,9 @@ export function DashboardPage({
   updateProgress,
   onSendLogs,
   onViewScreenshot,
+  onStopBot,
+  onClearResults,
+  onExportResults,
 }: DashboardPageProps) {
   const [tasks, setTasks] = useState<Task[]>(() => initialTasks ?? [])
   const [selectedId, setSelectedId] = useState<string | null>(null)
@@ -304,13 +307,24 @@ export function DashboardPage({
   const [filter, setFilter] = useState('ALL')
   const [showNewTask, setShowNewTask] = useState(false)
   const [editingTask, setEditingTask] = useState<Task | null>(null)
-  const [stopNotice, setStopNotice] = useState(false)
   const [imgError, setImgError] = useState(false)
   const [ctxMenu, setCtxMenu] = useState<{ x: number; y: number; taskId: string; confirming: boolean } | null>(null)
   const [rightTab, setRightTab] = useState<'log' | 'results'>('log')
   const [unreadResults, setUnreadResults] = useState(0)
   const [foundTaskIds, setFoundTaskIds] = useState<Set<string>>(new Set())
+  const [confirmClear, setConfirmClear] = useState(false)
   const logScrollRef = useRef<HTMLDivElement>(null)
+
+  const groupedResults = useMemo(() => {
+    const groups: Array<{ runId: number | null; items: BotResult[] }> = []
+    for (const r of results) {
+      const rid = r.run_id ?? null
+      const last = groups[groups.length - 1]
+      if (last && last.runId === rid) { last.items.push(r) }
+      else { groups.push({ runId: rid, items: [r] }) }
+    }
+    return groups
+  }, [results])
 
   useEffect(() => {
     if (initialTasks && initialTasks.length > 0) {
@@ -369,8 +383,9 @@ export function DashboardPage({
   }
 
   const handleStop = () => {
-    setStopNotice(true)
-    setTimeout(() => setStopNotice(false), 4000)
+    onStopBot?.()
+    onBotStateChange('idle')
+    setTasks(prev => prev.map(t => t.status === 'running' ? { ...t, status: 'idle' as const } : t))
   }
 
   const deleteTask = (id: string) => {
@@ -535,6 +550,22 @@ export function DashboardPage({
                 <Button variant="ghost" size="sm" onClick={() => setLocalLogs([])}>Clear</Button>
               </div>
             )}
+            {rightTab === 'results' && results.length > 0 && (
+              <div className="flex items-center gap-1">
+                <Button variant="ghost" size="sm" onClick={onExportResults}
+                  leadingIcon={<Icon name="send" className="w-3 h-3" />}>
+                  Export CSV
+                </Button>
+                {!confirmClear ? (
+                  <Button variant="ghost" size="sm" onClick={() => setConfirmClear(true)}>Clear</Button>
+                ) : (
+                  <>
+                    <Button variant="danger" size="sm" onClick={() => { onClearResults?.(); setConfirmClear(false) }}>Confirm</Button>
+                    <Button variant="ghost" size="sm" onClick={() => setConfirmClear(false)}>Cancel</Button>
+                  </>
+                )}
+              </div>
+            )}
           </div>
 
           {/* Log view */}
@@ -563,7 +594,7 @@ export function DashboardPage({
               ) : (
                 <table className="w-full text-[12px]">
                   <thead>
-                    <tr className="border-b border-zinc-800/70 text-zinc-500 text-[10.5px] uppercase tracking-wider">
+                    <tr className="border-b border-zinc-800/70 text-zinc-500 text-[10.5px] uppercase tracking-wider sticky top-0 bg-zinc-950">
                       <th className="px-4 py-2 text-left font-semibold w-10">#</th>
                       <th className="px-4 py-2 text-left font-semibold w-24">Date</th>
                       <th className="px-4 py-2 text-left font-semibold">Keyword</th>
@@ -572,14 +603,26 @@ export function DashboardPage({
                     </tr>
                   </thead>
                   <tbody>
-                    {results.map(r => (
-                      <tr key={r.id} className="border-b border-zinc-800/40 hover:bg-zinc-900/40">
-                        <td className="px-4 py-2 text-zinc-600 tabular-nums">{r.id}</td>
-                        <td className="px-4 py-2 text-zinc-500 tabular-nums whitespace-nowrap">{r.date}</td>
-                        <td className="px-4 py-2 text-zinc-300 max-w-[140px]"><span className="block truncate">{r.keyword}</span></td>
-                        <td className="px-4 py-2 text-zinc-100 max-w-[200px]"><span className="block truncate">{r.targetName}</span></td>
-                        <td className="px-4 py-2 text-zinc-400 max-w-[140px]"><span className="block truncate">{r.location}</span></td>
-                      </tr>
+                    {groupedResults.map(group => (
+                      <React.Fragment key={group.runId ?? 'legacy'}>
+                        <tr>
+                          <td colSpan={5} className="px-4 py-1.5 bg-zinc-900/60 border-y border-zinc-800/60">
+                            <span className="text-[10.5px] font-semibold text-zinc-500 uppercase tracking-[0.06em]">
+                              {group.runId ? `Run #${group.runId}` : 'Previous runs'}
+                            </span>
+                            <span className="ml-2 text-[10.5px] text-zinc-600 tabular-nums">{group.items.length} result{group.items.length !== 1 ? 's' : ''}</span>
+                          </td>
+                        </tr>
+                        {group.items.map(r => (
+                          <tr key={r.id} className="border-b border-zinc-800/40 hover:bg-zinc-900/40">
+                            <td className="px-4 py-2 text-zinc-600 tabular-nums">{r.id}</td>
+                            <td className="px-4 py-2 text-zinc-500 tabular-nums whitespace-nowrap">{r.date}</td>
+                            <td className="px-4 py-2 text-zinc-300 max-w-[140px]"><span className="block truncate">{r.keyword}</span></td>
+                            <td className="px-4 py-2 text-zinc-100 max-w-[200px]"><span className="block truncate">{r.targetName}</span></td>
+                            <td className="px-4 py-2 text-zinc-400 max-w-[140px]"><span className="block truncate">{r.location}</span></td>
+                          </tr>
+                        ))}
+                      </React.Fragment>
                     ))}
                   </tbody>
                 </table>
@@ -624,23 +667,17 @@ export function DashboardPage({
         )}
 
         <div className="flex-1 flex items-center gap-3 min-w-0">
-          {stopNotice ? (
-            <span className="text-[11.5px] text-amber-300">Stop is not available — close the window to abort.</span>
-          ) : (
-            <>
-              <StatusBadge
-                status={botState === 'running' ? 'running' : botState === 'paused' ? 'warn' : 'idle'}
-                label={botState}
-                pulse={botState === 'running'}
-              />
-              <ProgressBar
-                value={progressValue}
-                indeterminate={botState === 'running'}
-                label={botState === 'running' ? `${tasks.length} tasks` : undefined}
-                className="flex-1 max-w-[420px]"
-              />
-            </>
-          )}
+          <StatusBadge
+            status={botState === 'running' ? 'running' : botState === 'paused' ? 'warn' : 'idle'}
+            label={botState}
+            pulse={botState === 'running'}
+          />
+          <ProgressBar
+            value={progressValue}
+            indeterminate={botState === 'running'}
+            label={botState === 'running' ? `${tasks.length} tasks` : undefined}
+            className="flex-1 max-w-[420px]"
+          />
         </div>
       </footer>
 

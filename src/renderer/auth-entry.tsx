@@ -18,10 +18,18 @@ function AuthApp() {
     }
   }
 
-  // Poll while waiting; clear interval on success AND on unmount
+  // Poll while waiting; stop on success, error, or token expiry (5 min = server TTL)
   useEffect(() => {
     if (status !== 'waiting' || !token) return
+    const startedAt = Date.now()
+    const TOKEN_TTL_MS = 5 * 60_000
+
     const id = setInterval(async () => {
+      if (Date.now() - startedAt >= TOKEN_TTL_MS) {
+        clearInterval(id)
+        setStatus('error')
+        return
+      }
       try {
         const result = await window.api.checkAuthToken(token)
         if (result.success) {

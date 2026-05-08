@@ -4,8 +4,12 @@ declare global {
   interface Window {
     api: {
       startBot(tasks: unknown[]): void
+      stopBot(): void
       saveSession(data: unknown): Promise<{ success: boolean }>
       loadSession(): Promise<unknown>
+      loadResults(): Promise<unknown[]>
+      clearResults(): Promise<{ success: boolean; error?: string }>
+      exportResultsCsv(): Promise<{ success: boolean; path?: string; error?: string }>
       sendLogToTelegram(): Promise<{ success: boolean; error?: string }>
       openScreenshot(path: string): void
       getVersion(): Promise<string>
