@@ -13,9 +13,6 @@ import Store from "electron-store";
 import * as fs from "fs";
 import { AutomationEngine } from "./engine";
 
-// BETA: skip the auth gate. Flip to false once Telegram + Supabase auth is finished.
-const BETA_SKIP_AUTH = true;
-
 // ── Auto updater (optional, graceful fallback) ──────────────
 let autoUpdater: any = null;
 try {
@@ -280,21 +277,17 @@ async function createWindow() {
     },
   });
 
-  if (BETA_SKIP_AUTH) {
-    loadPage("index.html");
-  } else {
-    const telegramId = store.get("telegram_id");
+  const telegramId = store.get("telegram_id");
 
-    if (!telegramId) {
+  if (!telegramId) {
+    loadPage("auth.html");
+  } else {
+    try {
+      const { status } = await getSubscriptionStatus(telegramId);
+      loadPage(status === "expired" ? "subscription.html" : "index.html");
+    } catch {
+      store.delete("telegram_id");
       loadPage("auth.html");
-    } else {
-      try {
-        const { status } = await getSubscriptionStatus(telegramId);
-        loadPage(status === "expired" ? "subscription.html" : "index.html");
-      } catch {
-        store.delete("telegram_id");
-        loadPage("auth.html");
-      }
     }
   }
 
