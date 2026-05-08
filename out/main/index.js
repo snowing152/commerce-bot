@@ -1,5 +1,4 @@
 "use strict";
-const dotenv = require("dotenv");
 const path = require("path");
 const electron = require("electron");
 const supabaseJs = require("@supabase/supabase-js");
@@ -26,7 +25,6 @@ function _interopNamespaceDefault(e) {
   n.default = e;
   return Object.freeze(n);
 }
-const dotenv__namespace = /* @__PURE__ */ _interopNamespaceDefault(dotenv);
 const path__namespace = /* @__PURE__ */ _interopNamespaceDefault(path);
 const fs__namespace = /* @__PURE__ */ _interopNamespaceDefault(fs);
 const patchright__namespace = /* @__PURE__ */ _interopNamespaceDefault(patchright);
@@ -35,9 +33,8 @@ const net__namespace = /* @__PURE__ */ _interopNamespaceDefault(net);
 let _supabase = null;
 function getSupabase() {
   if (!_supabase) {
-    const url = process.env.SUPABASE_URL;
-    const key = process.env.SUPABASE_ANON_KEY;
-    if (!url || !key) throw new Error("Missing Supabase env vars");
+    const url = "https://dbuyhztmmoaxxsugpbhx.supabase.co";
+    const key = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImRidXloenRtbW9heHhzdWdwYmh4Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzQ4NTQ1OTYsImV4cCI6MjA5MDQzMDU5Nn0.WTXo_ZI2U1XT-l6Bv2hv_8z0RIFv185L3IHMHfycKy0";
     _supabase = supabaseJs.createClient(url, key);
   }
   return _supabase;
@@ -50,7 +47,7 @@ async function startTelegramAuth() {
     expires_at: new Date(Date.now() + 5 * 6e4).toISOString()
   });
   electron.shell.openExternal(
-    `https://t.me/${process.env.BOT_USERNAME}?start=login_${token}`
+    `https://t.me/${"coupangservice_bot"}?start=login_${token}`
   );
   return token;
 }
@@ -86,7 +83,7 @@ async function getSubscriptionStatus(telegramId) {
   };
 }
 function openPaymentBot() {
-  electron.shell.openExternal(`https://t.me/${process.env.BOT_USERNAME}?start=pay`);
+  electron.shell.openExternal(`https://t.me/${"coupangservice_bot"}?start=pay`);
 }
 async function getFreePort(fallbackPort = 9222) {
   return new Promise((resolve) => {
@@ -956,7 +953,6 @@ class AutomationEngine {
     }
   }
 }
-dotenv__namespace.config({ path: path__namespace.join(__dirname, "../../.env") });
 let autoUpdater = null;
 try {
   autoUpdater = require("electron-updater").autoUpdater;
@@ -985,7 +981,7 @@ function loadPage(page) {
   }
 }
 electron.ipcMain.handle("get-version", () => electron.app.getVersion());
-electron.ipcMain.handle("get-bot-username", () => process.env.BOT_USERNAME);
+electron.ipcMain.handle("get-bot-username", () => "coupangservice_bot");
 electron.ipcMain.handle("save-session", async (_event, data) => {
   try {
     const sessionPath = path__namespace.join(USER_DATA_PATH, SESSION_FILE_NAME);
