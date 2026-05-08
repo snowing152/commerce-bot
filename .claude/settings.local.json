@@ -3,7 +3,13 @@
     "allow": [
       "Bash(npx tsc *)",
       "Bash(Get-ChildItem -Path \"c:\\\\Users\\\\maksi\\\\Desktop\\\\ecommerce-bot\" -Force)",
-      "Bash(Select-Object Name, Mode)"
+      "Bash(Select-Object Name, Mode)",
+      "PowerShell(Get-ChildItem -Path \"c:\\\\Users\\\\maksi\\\\Desktop\\\\ecommerce-bot\" -Force | Select-Object Name, @{Name=\"Type\"; Expression={if\\($_.PSIsContainer\\) {\"Directory\"} else {\"File\"}}} | Format-Table -AutoSize)",
+      "Bash(del src\\\\auth.html src\\\\subscription.html src\\\\index.html)",
+      "Bash(ls -la \"c:\\\\Users\\\\maksi\\\\Desktop\\\\ecommerce-bot\\\\\" | head -30)",
+      "Read(//c/Users/maksi/Desktop/**)",
+      "Bash(find /c/Users/maksi -name \"*bot*\" -type f 2>/dev/null | grep -v node_modules | grep -v \".git\" | head -20)",
+      "Read(//c/Users/maksi/**)"
     ]
   }
 }

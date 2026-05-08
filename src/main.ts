@@ -1,6 +1,6 @@
 import * as dotenv from "dotenv";
 import * as path from "path";
-dotenv.config({ path: path.join(__dirname, "../.env") });
+dotenv.config({ path: path.join(__dirname, "../../.env") });
 
 import { app, BrowserWindow, ipcMain, shell } from "electron";
 import {
@@ -43,9 +43,16 @@ const store = new Store<StoreSchema>();
 // ── Window reference ────────────────────────────────────────
 let win: BrowserWindow;
 
-// ── Helper: load HTML page relative to dist/ ────────────────
+// ── Helper: load HTML page — dev server or built file ───────
 function loadPage(page: string) {
-  win.loadFile(path.join(__dirname, page));
+  const devUrl = process.env["ELECTRON_RENDERER_URL"];
+  if (!app.isPackaged && devUrl) {
+    // electron-vite dev: index.html → /, other pages → /auth.html etc.
+    const suffix = page === "index.html" ? "/" : `/${page}`;
+    win.loadURL(`${devUrl}${suffix}`);
+  } else {
+    win.loadFile(path.join(app.getAppPath(), "out/renderer", page));
+  }
 }
 
 // ═══════════════════════════════════════════════════════════
@@ -156,7 +163,7 @@ ipcMain.handle("navigate-to", (_, page: "auth" | "subscription" | "main") => {
     subscription: "subscription.html",
     main: "index.html",
   };
-  win.loadFile(path.join(__dirname, pages[page]));
+  loadPage(pages[page]);
 });
 
 ipcMain.handle("start-telegram-auth", async () => {
@@ -217,8 +224,8 @@ ipcMain.on("open-path", (_event, p) => {
 function setupUserFiles() {
   const configDest = path.join(USER_DATA_PATH, "config.json");
   const selectorsDest = path.join(USER_DATA_PATH, "selectors.json");
-  const configSrc = path.join(__dirname, "../config/config.json");
-  const selectorsSrc = path.join(__dirname, "../config/selectors.json");
+  const configSrc = path.join(__dirname, "../../config/config.json");
+  const selectorsSrc = path.join(__dirname, "../../config/selectors.json");
 
   try {
     if (!fs.existsSync(configSrc)) {
@@ -266,12 +273,12 @@ function setupUserFiles() {
 
 async function createWindow() {
   win = new BrowserWindow({
-    width: 550,
-    height: 650,
+    width: 1100,
+    height: 720,
     autoHideMenuBar: true,
     icon: path.join(__dirname, "../assets/icon.ico"),
     webPreferences: {
-      preload: path.join(__dirname, "preload.js"),
+      preload: path.join(__dirname, "../preload/index.js"),
       nodeIntegration: false,
       contextIsolation: true,
     },

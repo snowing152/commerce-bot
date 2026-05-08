@@ -1,0 +1,43 @@
+export {}
+
+declare global {
+  interface Window {
+    api: {
+      startBot(tasks: unknown[]): void
+      saveSession(data: unknown): Promise<{ success: boolean }>
+      loadSession(): Promise<unknown>
+      sendLogToTelegram(): Promise<{ success: boolean; error?: string }>
+      openScreenshot(path: string): void
+      getVersion(): Promise<string>
+      getBotUsername(): Promise<string | undefined>
+      getSubscriptionStatus(): Promise<SubscriptionResult>
+      openPaymentBot(): Promise<void>
+      navigateTo(page: 'auth' | 'subscription' | 'main'): Promise<void>
+      logout(): Promise<void>
+      startTelegramAuth(): Promise<string>
+      checkAuthToken(token: string): Promise<{ success: boolean; telegramId?: number }>
+      clearChromeDebugProfile(): Promise<{ success: boolean; path: string; error?: string }>
+      // event listeners — all return an unsubscribe cleanup function
+      onLog(cb: (msg: string) => void): () => void
+      onDone(cb: (path: string | null) => void): () => void
+      onBotResult(cb: (data: unknown) => void): () => void
+      onUpdateProgress(cb: (percent: number) => void): () => void
+      onUpdateStatus(cb: (text: string) => void): () => void
+      onUpdateError(cb: (p: {
+        message: string | null
+        retryInSec: number | null
+        attempt: number | null
+      }) => void): () => void
+      onSubscriptionUpdated(cb: () => void): () => void
+    }
+  }
+
+  interface SubscriptionResult {
+    user: { first_name: string; photo_url: string | null }
+    status: 'trial' | 'active' | 'expired'
+    daysLeft: number | null
+    trialStart: string | null
+    periodEnd: string | null
+    price: string
+  }
+}
