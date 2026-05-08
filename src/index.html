@@ -463,12 +463,7 @@
           const targetName = document
             .getElementById(`targetName_${i}`)
             .value.trim();
-          const filtersRaw = document.getElementById(`filters_${i}`).value;
-          const filters = filtersRaw
-            .split(",")
-            .map((f) => f.trim())
-            .filter((f) => f);
-          tasks.push({ keyword, target_name: targetName, filters, cost: [] });
+          tasks.push({ keyword, target_name: targetName });
         }
         return tasks;
       }
