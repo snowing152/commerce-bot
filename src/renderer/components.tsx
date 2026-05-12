@@ -433,11 +433,53 @@ export const Wordmark = ({ size = 'md' }: WordmarkProps) => {
   const text = size === 'lg' ? 'text-[15px]' : 'text-[12.5px]';
   return (
     <div className="flex items-center gap-2">
-      <div
-        className={`${dim} relative rounded-md bg-gradient-to-b from-zinc-200 to-zinc-400 text-zinc-950 grid place-items-center font-bold tracking-tighter shadow-[0_1px_0_rgba(0,0,0,0.6),inset_0_1px_0_rgba(255,255,255,0.4)]`}
+      <svg
+        xmlns="http://www.w3.org/2000/svg"
+        viewBox="0 0 200 200"
+        className={`${dim} rounded-md flex-shrink-0`}
+        draggable={false}
+        aria-label="Coupang Bot"
       >
-        <span className={size === 'lg' ? 'text-[15px]' : 'text-[10px]'}>Cb</span>
-      </div>
+        <defs>
+          <linearGradient id="wm-bg" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stopColor="#27272a" />
+            <stop offset="100%" stopColor="#09090b" />
+          </linearGradient>
+          <linearGradient id="wm-br" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stopColor="#fafafa" />
+            <stop offset="100%" stopColor="#a1a1aa" />
+          </linearGradient>
+        </defs>
+        <rect x="0" y="0" width="200" height="200" rx="40" fill="url(#wm-bg)" />
+        <rect
+          x="0.5"
+          y="0.5"
+          width="199"
+          height="199"
+          rx="39.5"
+          fill="none"
+          stroke="#3f3f46"
+          strokeWidth="1"
+        />
+        <path
+          d="M 70 50 L 50 50 L 50 150 L 70 150"
+          fill="none"
+          stroke="url(#wm-br)"
+          strokeWidth="14"
+          strokeLinecap="square"
+          strokeLinejoin="miter"
+        />
+        <path
+          d="M 130 50 L 150 50 L 150 150 L 130 150"
+          fill="none"
+          stroke="url(#wm-br)"
+          strokeWidth="14"
+          strokeLinecap="square"
+          strokeLinejoin="miter"
+        />
+        <circle cx="100" cy="100" r="10" fill="#10b981" />
+        <circle cx="100" cy="100" r="4" fill="#022c22" />
+      </svg>
       <div className="flex flex-col leading-none">
         <span className={`${text} font-semibold tracking-tight text-zinc-100`}>Coupang Bot</span>
         {size === 'lg' && (

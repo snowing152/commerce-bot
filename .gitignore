@@ -1,34 +1,33 @@
 # Dependencies
 node_modules/
 
-# Build output
-dist/
+# Build output (electron-vite)
 out/
 
-# Electron builder output
-dist/win-unpacked/
-dist/*.exe
-dist/*.exe.blockmap
-dist/*.yml
-dist/*.yaml
+# Legacy build output (tsc)
+dist/
 
-# Compiled JS (from TypeScript src)
-dist/engine.js
-dist/main.js
-dist/preload.js
-dist/utils.js
-dist/engine.test.js
-dist/utils.test.js
+# Electron builder output
+release/
+
+# Environment variables — never commit these
+.env
+.env.local
+.env.*.local
+
+# Bundled default config — contains secrets (Supabase JWT, bot token)
+config/config.json
 
 # Logs
 logs/
 *.log
 npm-debug.log*
 
-# Environment variables
-.env
-.env.local
-.env.*.local
+# Test coverage
+coverage/
+
+# TypeScript cache
+*.tsbuildinfo
 
 # OS files
 .DS_Store
@@ -40,16 +39,3 @@ Thumbs.db
 *.swp
 *.swo
 .claude/
-
-# Test coverage
-coverage/
-
-# TypeScript cache
-*.tsbuildinfo
-
-config/config.json
-
-release/
-dist/
-*.exe
-win-unpacked/

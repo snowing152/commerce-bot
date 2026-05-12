@@ -119,6 +119,25 @@ const en: Dict = {
   'modal.create': 'Create task',
   'modal.save': 'Save changes',
 
+  // Report problem modal
+  'report.button': 'Report Problem',
+  'report.title': 'Report a Problem',
+  'report.subtitle':
+    'Describe what happened — your last 50 log lines will be attached automatically.',
+  'report.typeLabel': 'Problem type',
+  'report.type.stuck': 'Bot stuck / not responding',
+  'report.type.notFound': 'Product not found',
+  'report.type.login': 'Login issue',
+  'report.type.browser': 'Browser did not open',
+  'report.type.schedule': 'Scheduled search not firing',
+  'report.type.other': 'Other',
+  'report.descLabel': 'What happened?',
+  'report.descPlaceholder': 'Describe the problem in as much detail as possible…',
+  'report.send': 'Send report',
+  'report.success.title': 'Report sent',
+  'report.success.body': 'We received your report. Thank you.',
+  'report.failed': 'Failed to send: {error}',
+
   // Auto-updater (from main.ts)
   'update.unavailable': 'Auto-updater unavailable.',
   'update.devOnly': 'Auto-update is only available in the packaged build.',
@@ -243,6 +262,25 @@ const ru: Dict = {
   'modal.productPlaceholder': 'например Galaxy Buds3 Pro 화이트',
   'modal.create': 'Создать задачу',
   'modal.save': 'Сохранить изменения',
+
+  // Report problem modal
+  'report.button': 'Сообщить о проблеме',
+  'report.title': 'Сообщить о проблеме',
+  'report.subtitle':
+    'Опишите, что произошло — последние 50 строк лога будут прикреплены автоматически.',
+  'report.typeLabel': 'Тип проблемы',
+  'report.type.stuck': 'Бот завис / не отвечает',
+  'report.type.notFound': 'Товар не найден',
+  'report.type.login': 'Проблема со входом',
+  'report.type.browser': 'Браузер не открылся',
+  'report.type.schedule': 'Плановый поиск не запускается',
+  'report.type.other': 'Другое',
+  'report.descLabel': 'Что произошло?',
+  'report.descPlaceholder': 'Опишите проблему как можно подробнее…',
+  'report.send': 'Отправить отчёт',
+  'report.success.title': 'Отчёт отправлен',
+  'report.success.body': 'Мы получили ваш отчёт. Спасибо.',
+  'report.failed': 'Ошибка отправки: {error}',
 
   // Auto-updater
   'update.unavailable': 'Модуль автообновления недоступен.',

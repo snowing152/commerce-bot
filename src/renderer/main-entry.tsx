@@ -198,7 +198,7 @@ function DashboardApp() {
       results={results}
       screenshotPath={screenshotPath}
       updateProgress={updateProgress}
-      onSendLogs={() => window.api.sendLogToTelegram()}
+      onReportProblem={(payload) => window.api.sendProblemReport(payload)}
       onViewScreenshot={(p) => window.api.openScreenshot(p)}
       onStopBot={() => window.api.stopBot()}
       onClearResults={handleClearResults}

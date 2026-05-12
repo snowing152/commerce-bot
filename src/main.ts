@@ -49,6 +49,11 @@ interface StoreSchema {
 }
 const store = new Store<StoreSchema>();
 
+// ── Icons root (dev vs packaged) ────────────────────────────
+const iconsRoot = app.isPackaged
+  ? path.join(process.resourcesPath, 'iconss')
+  : path.join(app.getAppPath(), 'iconss');
+
 // ── Window reference ────────────────────────────────────────
 let win: BrowserWindow;
 let tray: Tray | null = null;
@@ -306,6 +311,56 @@ ipcMain.handle('send-log-telegram', async () => {
   }
 });
 
+ipcMain.handle(
+  'send-problem-report',
+  async (_e, { type, description }: { type: string; description: string }) => {
+    try {
+      const bot_token = process.env.TELEGRAM_BOT_TOKEN;
+      const chat_id = process.env.TELEGRAM_LOG_CHAT_ID;
+      if (!bot_token || !chat_id) {
+        throw new Error(
+          'Telegram not configured (set TELEGRAM_BOT_TOKEN and TELEGRAM_LOG_CHAT_ID at build time)',
+        );
+      }
+
+      const telegramId = store.get('telegram_id');
+      const userInfo = telegramId ? `ID: ${telegramId}` : 'Unknown';
+
+      const logPath = path.join(USER_DATA_PATH, 'bot_log.txt');
+      let logLines = '(no log file yet)';
+      if (fs.existsSync(logPath)) {
+        const all = fs.readFileSync(logPath, 'utf-8').split('\n').filter(Boolean);
+        logLines = all.slice(-50).join('\n');
+      }
+
+      const header = `🐛 *Problem Report*\n\nUser: ${escapeMarkdownV2(userInfo)}\nType: ${escapeMarkdownV2(type)}\nDescription: ${escapeMarkdownV2(description)}\n\n*Last 50 log lines:*\n`;
+      const codeBlock = `\`\`\`\n${escapeMarkdownV2(logLines)}\n\`\`\``;
+      const maxCodeLen = 4096 - header.length - 6;
+      const safeCode =
+        codeBlock.length > maxCodeLen
+          ? `\`\`\`\n${escapeMarkdownV2('...' + logLines.slice(-(maxCodeLen - 20)))}\n\`\`\``
+          : codeBlock;
+
+      const url = `https://api.telegram.org/bot${bot_token}/sendMessage`;
+      const response = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          chat_id,
+          text: header + safeCode,
+          parse_mode: 'MarkdownV2',
+        }),
+      });
+
+      if (!response.ok) throw new Error('Telegram API error: ' + response.statusText);
+      return { success: true };
+    } catch (error) {
+      const errMessage = error instanceof Error ? error.message : String(error);
+      return { success: false, error: errMessage };
+    }
+  },
+);
+
 // ── Auth & Subscription ──────────────────────────────────────
 ipcMain.handle('get-subscription-status', async () => {
   const telegramId = store.get('telegram_id');
@@ -455,7 +510,7 @@ async function createWindow() {
     width: 1100,
     height: 720,
     autoHideMenuBar: true,
-    icon: path.join(__dirname, '../assets/icon.ico'),
+    icon: path.join(iconsRoot, 'icons', '256x256.png'),
     webPreferences: {
       preload: path.join(__dirname, '../preload/index.js'),
       nodeIntegration: false,
@@ -472,7 +527,7 @@ async function createWindow() {
   });
 
   // Set up system tray
-  const iconPath = path.join(__dirname, '../assets/icon.ico');
+  const iconPath = path.join(iconsRoot, 'icons', '16x16.png');
   let trayIcon = nativeImage.createEmpty();
   if (fs.existsSync(iconPath)) {
     trayIcon = nativeImage.createFromPath(iconPath);

@@ -316,7 +316,10 @@ export interface DashboardPageProps {
   results?: BotResult[];
   screenshotPath?: string | null;
   updateProgress?: number | null;
-  onSendLogs?: () => void;
+  onReportProblem?: (payload: {
+    type: string;
+    description: string;
+  }) => Promise<{ success: boolean; error?: string }>;
   onViewScreenshot?: (path: string) => void;
   onStopBot?: () => void;
   onClearResults?: () => void;
@@ -358,7 +361,7 @@ export function DashboardPage({
   results = [],
   screenshotPath,
   updateProgress,
-  onSendLogs,
+  onReportProblem,
   onViewScreenshot,
   onStopBot,
   onClearResults,
@@ -390,6 +393,7 @@ export function DashboardPage({
     () => initialSchedule ?? null,
   );
   const [showSchedule, setShowSchedule] = useState(false);
+  const [showReport, setShowReport] = useState(false);
 
   const groupedResults = useMemo(() => {
     const groups: Array<{ runId: number | null; items: BotResult[] }> = [];
@@ -703,11 +707,10 @@ export function DashboardPage({
                 <Button
                   variant="ghost"
                   size="sm"
-                  onClick={onSendLogs}
-                  leadingIcon={<Icon name="send" className="w-3 h-3" />}
-                >
-                  {t('panel.sendTg')}
-                </Button>
+                  onClick={() => setShowReport(true)}
+                  title={t('report.button')}
+                  leadingIcon={<Icon name="alert" className="w-3.5 h-3.5" />}
+                />
                 <Button variant="ghost" size="sm" onClick={() => setLocalLogs([])}>
                   {t('panel.clear')}
                 </Button>
@@ -925,6 +928,16 @@ export function DashboardPage({
         </div>
       </footer>
 
+      {showReport && (
+        <ReportModal
+          onClose={() => setShowReport(false)}
+          onSubmit={async (payload) => {
+            const result = await onReportProblem?.(payload);
+            return result ?? { success: false, error: 'Not configured' };
+          }}
+        />
+      )}
+
       {showSchedule && (
         <ScheduleModal
           config={scheduleConfig ?? { enabled: false, intervalHours: 6, nextRunAt: null }}
@@ -1075,6 +1088,138 @@ function NewTaskDialog({
           </div>
         </div>
       </form>
+    </div>
+  );
+}
+
+const PROBLEM_TYPE_KEYS = [
+  'report.type.stuck',
+  'report.type.notFound',
+  'report.type.login',
+  'report.type.browser',
+  'report.type.schedule',
+  'report.type.other',
+] as const;
+
+function ReportModal({
+  onClose,
+  onSubmit,
+}: {
+  onClose: () => void;
+  onSubmit: (payload: {
+    type: string;
+    description: string;
+  }) => Promise<{ success: boolean; error?: string }>;
+}) {
+  const { t } = useT();
+  const [typeKey, setTypeKey] = useState<string>(PROBLEM_TYPE_KEYS[0]);
+  const [description, setDescription] = useState('');
+  const [status, setStatus] = useState<'idle' | 'sending' | 'success' | 'error'>('idle');
+  const [errorMsg, setErrorMsg] = useState('');
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!description.trim()) return;
+    setStatus('sending');
+    const result = await onSubmit({ type: t(typeKey), description: description.trim() });
+    if (result.success) {
+      setStatus('success');
+    } else {
+      setErrorMsg(result.error ?? 'Unknown error');
+      setStatus('error');
+    }
+  };
+
+  return (
+    <div
+      className="absolute inset-0 z-50 grid place-items-center bg-black/50 backdrop-blur-sm"
+      onClick={status === 'sending' ? undefined : onClose}
+    >
+      <div
+        className="w-[460px] rounded-lg border border-zinc-800 bg-zinc-950 shadow-[0_30px_80px_-20px_rgba(0,0,0,0.8)]"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="px-5 pt-5 pb-4 border-b border-zinc-800/70">
+          <h2 className="text-[14px] font-semibold text-zinc-100 tracking-tight flex items-center gap-2">
+            <Icon name="alert" className="w-4 h-4 text-amber-400" />
+            {t('report.title')}
+          </h2>
+          <p className="text-[11.5px] text-zinc-500 mt-0.5">{t('report.subtitle')}</p>
+        </div>
+
+        {status === 'success' ? (
+          <div className="px-5 py-8 text-center">
+            <Icon name="check" className="w-8 h-8 text-emerald-400 mx-auto mb-3" />
+            <p className="text-[13px] font-semibold text-zinc-100 mb-1">
+              {t('report.success.title')}
+            </p>
+            <p className="text-[12px] text-zinc-500">{t('report.success.body')}</p>
+            <div className="mt-5">
+              <Button variant="secondary" size="md" onClick={onClose}>
+                {t('common.cancel')}
+              </Button>
+            </div>
+          </div>
+        ) : (
+          <form onSubmit={handleSubmit}>
+            <div className="px-5 py-4 space-y-3.5">
+              <label className="block">
+                <span className="text-[11.5px] font-medium text-zinc-300 block mb-1.5">
+                  {t('report.typeLabel')}
+                </span>
+                <select
+                  value={typeKey}
+                  onChange={(e) => setTypeKey(e.target.value)}
+                  className="h-8 w-full px-2.5 text-[13px] rounded-md bg-zinc-900/60 border border-zinc-800 text-zinc-100 focus:outline-none focus:border-zinc-600 focus:ring-1 focus:ring-zinc-600 transition-colors"
+                >
+                  {PROBLEM_TYPE_KEYS.map((key) => (
+                    <option key={key} value={key}>
+                      {t(key)}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label className="block">
+                <span className="text-[11.5px] font-medium text-zinc-300 block mb-1.5">
+                  {t('report.descLabel')}
+                </span>
+                <textarea
+                  value={description}
+                  onChange={(e) => setDescription(e.target.value)}
+                  placeholder={t('report.descPlaceholder')}
+                  rows={4}
+                  className="w-full px-2.5 py-2 text-[13px] rounded-md bg-zinc-900/60 border border-zinc-800 text-zinc-100 placeholder:text-zinc-500 focus:outline-none focus:border-zinc-600 focus:ring-1 focus:ring-zinc-600 transition-colors resize-none"
+                />
+              </label>
+              {status === 'error' && (
+                <p className="text-[12px] text-red-400 flex items-center gap-1.5">
+                  <Icon name="x" className="w-3.5 h-3.5" />{' '}
+                  {t('report.failed', { error: errorMsg })}
+                </p>
+              )}
+            </div>
+            <div className="px-5 py-3.5 border-t border-zinc-800/70 flex items-center justify-between bg-zinc-900/30">
+              <p className="text-[11px] text-zinc-500 inline-flex items-center gap-1.5">
+                <Kbd>{t('common.esc')}</Kbd> {t('common.toCancel')}
+              </p>
+              <div className="flex items-center gap-1.5">
+                <Button variant="ghost" size="md" type="button" onClick={onClose}>
+                  {t('common.cancel')}
+                </Button>
+                <Button
+                  variant="primary"
+                  size="md"
+                  type="submit"
+                  disabled={!description.trim()}
+                  loading={status === 'sending'}
+                >
+                  {t('report.send')}
+                </Button>
+              </div>
+            </div>
+          </form>
+        )}
+      </div>
     </div>
   );
 }

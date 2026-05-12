@@ -27,6 +27,10 @@ declare global {
       startTelegramAuth(): Promise<string>;
       checkAuthToken(token: string): Promise<{ success: boolean; telegramId?: number }>;
       clearChromeDebugProfile(): Promise<{ success: boolean; path: string; error?: string }>;
+      sendProblemReport(payload: {
+        type: string;
+        description: string;
+      }): Promise<{ success: boolean; error?: string }>;
       getSchedule(): Promise<ScheduleConfig>;
       saveSchedule(cfg: Omit<ScheduleConfig, 'nextRunAt'>): Promise<{ success: boolean }>;
       // event listeners — all return an unsubscribe cleanup function

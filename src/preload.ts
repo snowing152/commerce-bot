@@ -85,6 +85,10 @@ contextBridge.exposeInMainWorld('api', {
   checkAuthToken: (token: string) => ipcRenderer.invoke('check-auth-token', token),
   clearChromeDebugProfile: () => ipcRenderer.invoke('clear-chrome-debug-profile'),
 
+  // Problem report
+  sendProblemReport: (payload: { type: string; description: string }) =>
+    ipcRenderer.invoke('send-problem-report', payload),
+
   // Schedule
   getSchedule: () => ipcRenderer.invoke('get-schedule'),
   saveSchedule: (cfg: { enabled: boolean; intervalHours: number }) =>
