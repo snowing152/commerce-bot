@@ -1,11 +1,11 @@
-export type Language = 'en' | 'ru'
+export type Language = 'en' | 'ru';
 
 export const LANGUAGES: { code: Language; label: string }[] = [
   { code: 'en', label: 'EN' },
   { code: 'ru', label: 'RU' },
-]
+];
 
-type Dict = Record<string, string>
+type Dict = Record<string, string>;
 
 const en: Dict = {
   // Common
@@ -49,7 +49,8 @@ const en: Dict = {
   'sub.daysSinceExpiry': 'Days since expiry',
   'sub.days': '{n} days',
   'sub.concurrent': 'Concurrent tasks',
-  'sub.renewalCopy': "Renewal is handled in our Telegram billing bot. You'll get a confirmation here when it completes.",
+  'sub.renewalCopy':
+    "Renewal is handled in our Telegram billing bot. You'll get a confirmation here when it completes.",
   'sub.extend': 'Extend via Telegram',
   'sub.help': 'Need help? Contact @coupangbot_support',
   'sub.loading': 'Loading subscription…',
@@ -106,7 +107,8 @@ const en: Dict = {
   // Task modal
   'modal.new.title': 'New task',
   'modal.edit.title': 'Edit task',
-  'modal.new.subtitle': 'The bot will poll Coupang for this product and order when it falls in band.',
+  'modal.new.subtitle':
+    'The bot will poll Coupang for this product and order when it falls in band.',
   'modal.edit.subtitle': 'Update the keyword and target product name.',
   'modal.keywordLabel': 'Search keyword',
   'modal.keywordHint': 'Korean text supported',
@@ -128,7 +130,7 @@ const en: Dict = {
   'update.errorRetry': 'Update error. Retrying in {sec}s.',
   'update.retrying': 'Retrying update check…',
   'update.errorPrefix': 'Update error: {message}',
-}
+};
 
 const ru: Dict = {
   // Common
@@ -172,7 +174,8 @@ const ru: Dict = {
   'sub.daysSinceExpiry': 'Дней после окончания',
   'sub.days': '{n} дн.',
   'sub.concurrent': 'Параллельных задач',
-  'sub.renewalCopy': 'Продление обрабатывает наш Telegram-бот биллинга. Подтверждение появится здесь по завершении.',
+  'sub.renewalCopy':
+    'Продление обрабатывает наш Telegram-бот биллинга. Подтверждение появится здесь по завершении.',
   'sub.extend': 'Продлить через Telegram',
   'sub.help': 'Нужна помощь? Напишите @coupangbot_support',
   'sub.loading': 'Загрузка подписки…',
@@ -229,7 +232,8 @@ const ru: Dict = {
   // Task modal
   'modal.new.title': 'Новая задача',
   'modal.edit.title': 'Изменить задачу',
-  'modal.new.subtitle': 'Бот будет опрашивать Coupang и оформит заказ, когда цена попадёт в диапазон.',
+  'modal.new.subtitle':
+    'Бот будет опрашивать Coupang и оформит заказ, когда цена попадёт в диапазон.',
   'modal.edit.subtitle': 'Обновите запрос и название товара.',
   'modal.keywordLabel': 'Поисковый запрос',
   'modal.keywordHint': 'Поддерживается корейский текст',
@@ -251,18 +255,18 @@ const ru: Dict = {
   'update.errorRetry': 'Ошибка обновления. Повтор через {sec} сек.',
   'update.retrying': 'Повторяю проверку обновлений…',
   'update.errorPrefix': 'Ошибка обновления: {message}',
-}
+};
 
-export const translations: Record<Language, Dict> = { en, ru }
+export const translations: Record<Language, Dict> = { en, ru };
 
 export function translate(
   lang: Language,
   key: string,
   params?: Record<string, string | number>,
 ): string {
-  const raw = translations[lang]?.[key] ?? translations.en[key] ?? key
-  if (!params) return raw
+  const raw = translations[lang]?.[key] ?? translations.en[key] ?? key;
+  if (!params) return raw;
   return raw.replace(/\{(\w+)\}/g, (_, name) =>
     Object.prototype.hasOwnProperty.call(params, name) ? String(params[name]) : `{${name}}`,
-  )
+  );
 }

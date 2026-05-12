@@ -8,14 +8,22 @@
     "build": "electron-vite build",
     "start": "electron .",
     "pack": "npm run clean && electron-vite build && electron-builder --win --x64",
-    "test": "jest"
+    "test": "jest",
+    "typecheck": "tsc --noEmit",
+    "lint": "eslint src",
+    "format:check": "prettier --check \"src/**/*.{ts,tsx}\"",
+    "prepare": "husky"
+  },
+  "lint-staged": {
+    "src/**/*.{ts,tsx}": [
+      "eslint",
+      "prettier --check"
+    ]
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.100.1",
-    "dotenv": "^17.3.1",
     "electron-store": "^7.0.3",
     "electron-updater": "^6.8.3",
-    "node-telegram-bot-api": "^0.63.0",
     "patchright": "^1.58.2",
     "react": "^18.3.1",
     "react-dom": "^18.3.1"
@@ -24,15 +32,22 @@
     "@tailwindcss/vite": "^4.1.7",
     "@types/jest": "^30.0.0",
     "@types/node": "^20.0.0",
-    "@types/node-telegram-bot-api": "^0.64.14",
     "@types/react": "^18.3.23",
     "@types/react-dom": "^18.3.7",
+    "@typescript-eslint/eslint-plugin": "^8.59.3",
+    "@typescript-eslint/parser": "^8.59.3",
     "@vitejs/plugin-react": "^4.5.2",
     "concurrently": "^9.2.1",
+    "dotenv": "^17.3.1",
     "electron": "^41.0.4",
     "electron-builder": "^26.8.1",
     "electron-vite": "^3.1.0",
+    "eslint": "^10.3.0",
+    "eslint-plugin-react-hooks": "^7.1.1",
+    "husky": "^9.1.7",
     "jest": "^30.3.0",
+    "lint-staged": "^17.0.4",
+    "prettier": "^3.8.3",
     "tailwindcss": "^4.1.7",
     "ts-jest": "^29.4.6",
     "tsx": "^4.7.0",
