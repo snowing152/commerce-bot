@@ -66,6 +66,7 @@ function DashboardApp() {
   const [results, setResults] = useState<BotResult[]>([]);
   const [screenshotPath, setScreenshotPath] = useState<string | null>(null);
   const [updateProgress, setUpdateProgress] = useState<number | null>(null);
+  const [scheduleConfig, setScheduleConfig] = useState<ScheduleConfig | null>(null);
 
   // Load session + version + user on mount
   useEffect(() => {
@@ -74,7 +75,8 @@ function DashboardApp() {
       window.api.getVersion().catch(() => ''),
       window.api.getSubscriptionStatus().catch(() => null),
       window.api.loadResults().catch(() => []),
-    ]).then(([session, ver, sub, savedResults]) => {
+      window.api.getSchedule().catch(() => null),
+    ]).then(([session, ver, sub, savedResults, schedule]) => {
       if (Array.isArray(session) && session.length > 0) {
         setInitialTasks(fromSessionTasks(session as EngineTask[]));
       } else {
@@ -83,6 +85,7 @@ function DashboardApp() {
       setVersion(ver);
       if (sub) setUser((sub as SubscriptionResult).user);
       if (Array.isArray(savedResults)) setResults(savedResults as BotResult[]);
+      if (schedule) setScheduleConfig(schedule as ScheduleConfig);
     });
   }, []);
 
@@ -146,6 +149,12 @@ function DashboardApp() {
     window.api.exportResultsCsv();
   };
 
+  const handleSaveSchedule = async (cfg: Omit<ScheduleConfig, 'nextRunAt'>) => {
+    await window.api.saveSchedule(cfg);
+    const updated = await window.api.getSchedule().catch(() => null);
+    if (updated) setScheduleConfig(updated);
+  };
+
   // Don't mount the page until session is loaded (avoid flash of empty task list)
   if (initialTasks === undefined) {
     return (
@@ -194,6 +203,8 @@ function DashboardApp() {
       onStopBot={() => window.api.stopBot()}
       onClearResults={handleClearResults}
       onExportResults={handleExportResults}
+      initialSchedule={scheduleConfig}
+      onSaveSchedule={handleSaveSchedule}
     />
   );
 }

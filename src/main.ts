@@ -1,6 +1,16 @@
 import * as path from 'path';
 
-import { app, BrowserWindow, dialog, ipcMain, shell } from 'electron';
+import {
+  app,
+  BrowserWindow,
+  dialog,
+  ipcMain,
+  shell,
+  Tray,
+  Menu,
+  nativeImage,
+  Notification,
+} from 'electron';
 import {
   getSubscriptionStatus,
   openPaymentBot,
@@ -41,6 +51,100 @@ const store = new Store<StoreSchema>();
 
 // ── Window reference ────────────────────────────────────────
 let win: BrowserWindow;
+let tray: Tray | null = null;
+let isQuitting = false;
+
+// ── Scheduler state ─────────────────────────────────────────
+let scheduleTimer: NodeJS.Timeout | null = null;
+let nextScheduledRun: Date | null = null;
+
+// ── Config helpers ───────────────────────────────────────────
+function readConfig(): any {
+  const configPath = path.join(USER_DATA_PATH, 'config.json');
+  return JSON.parse(fs.readFileSync(configPath, 'utf-8'));
+}
+
+function writeConfig(cfg: any): void {
+  const configPath = path.join(USER_DATA_PATH, 'config.json');
+  fs.writeFileSync(configPath, JSON.stringify(cfg, null, 2), 'utf-8');
+}
+
+// ── Shared bot runner ────────────────────────────────────────
+async function triggerRun(
+  tasksArray: any[] | null,
+  send: (channel: string, payload?: unknown) => void,
+): Promise<void> {
+  if (activeEngine) {
+    send('bot-log', '[WARN] A bot run is already in progress.');
+    return;
+  }
+  try {
+    const config = readConfig();
+    if (tasksArray !== null) {
+      config.tasks = tasksArray;
+      writeConfig(config);
+    }
+    if (!Array.isArray(config.tasks) || config.tasks.length === 0) return;
+
+    const engine = new AutomationEngine(USER_DATA_PATH);
+    activeEngine = engine;
+
+    const existingResults = loadSavedResults();
+    let nextResultId =
+      existingResults.length > 0
+        ? Math.max(0, ...existingResults.map((r: any) => Number(r.id) || 0)) + 1
+        : 1;
+    const currentRunId =
+      existingResults.length > 0
+        ? Math.max(0, ...existingResults.map((r: any) => Number(r.run_id) || 0)) + 1
+        : 1;
+
+    engine.onLog = (msg) => send('bot-log', msg);
+    engine.onResult = (data) => {
+      const enriched = { ...data, id: nextResultId++, run_id: currentRunId };
+      existingResults.push(enriched);
+      persistResults(existingResults);
+      send('bot-result', enriched);
+    };
+
+    const screenshotPath = await engine.run();
+    send('bot-done', screenshotPath);
+  } catch (error: any) {
+    send('bot-log', `[КРИТИЧЕСКАЯ ОШИБКА] ${error.message}`);
+    send('bot-done', null);
+  } finally {
+    activeEngine = null;
+  }
+}
+
+// ── Scheduler ────────────────────────────────────────────────
+function clearScheduler(): void {
+  if (scheduleTimer) {
+    clearInterval(scheduleTimer);
+    scheduleTimer = null;
+  }
+  nextScheduledRun = null;
+}
+
+function startScheduler(intervalHours: number): void {
+  clearScheduler();
+  const ms = intervalHours * 60 * 60 * 1000;
+  nextScheduledRun = new Date(Date.now() + ms);
+  scheduleTimer = setInterval(async () => {
+    if (activeEngine) return;
+    const send = (channel: string, payload?: unknown) => {
+      if (win && !win.isDestroyed()) win.webContents.send(channel, payload);
+    };
+    if (Notification.isSupported()) {
+      new Notification({ title: 'Coupang Bot', body: 'Scheduled search starting…' }).show();
+    }
+    await triggerRun(null, send);
+    if (Notification.isSupported()) {
+      new Notification({ title: 'Coupang Bot', body: 'Scheduled search complete.' }).show();
+    }
+    nextScheduledRun = new Date(Date.now() + ms);
+  }, ms);
+}
 
 // ── Helper: load HTML page — dev server or built file ───────
 function loadPage(page: string) {
@@ -266,58 +370,30 @@ ipcMain.handle('clear-chrome-debug-profile', async () => {
 // ── Bot runner ───────────────────────────────────────────────
 let activeEngine: AutomationEngine | null = null;
 
-ipcMain.on('start-bot', async (event, tasksArray) => {
-  if (activeEngine) {
-    event.reply('bot-log', '[WARN] A bot run is already in progress.');
-    return;
-  }
-  try {
-    const configPath = path.join(USER_DATA_PATH, 'config.json');
-    const rawConfig = await fs.promises.readFile(configPath, 'utf-8');
-    const config = JSON.parse(rawConfig);
-
-    config.tasks = tasksArray;
-    await fs.promises.writeFile(configPath, JSON.stringify(config, null, 2));
-
-    const engine = new AutomationEngine(USER_DATA_PATH);
-    activeEngine = engine;
-
-    const existingResults = loadSavedResults();
-    let nextResultId =
-      existingResults.length > 0
-        ? Math.max(0, ...existingResults.map((r: any) => Number(r.id) || 0)) + 1
-        : 1;
-    const currentRunId =
-      existingResults.length > 0
-        ? Math.max(0, ...existingResults.map((r: any) => Number(r.run_id) || 0)) + 1
-        : 1;
-
-    const reply = (channel: string, payload?: unknown) => {
-      if (!event.sender.isDestroyed()) event.reply(channel, payload);
-    };
-
-    engine.onLog = (msg) => reply('bot-log', msg);
-    engine.onResult = (data) => {
-      const enriched = { ...data, id: nextResultId++, run_id: currentRunId };
-      existingResults.push(enriched);
-      persistResults(existingResults);
-      reply('bot-result', enriched);
-    };
-
-    const screenshotPath = await engine.run();
-    reply('bot-done', screenshotPath);
-  } catch (error: any) {
-    if (!event.sender.isDestroyed()) {
-      event.reply('bot-log', `[КРИТИЧЕСКАЯ ОШИБКА] ${error.message}`);
-      event.reply('bot-done', null);
-    }
-  } finally {
-    activeEngine = null;
-  }
+ipcMain.on('start-bot', (event, tasksArray) => {
+  const send = (channel: string, payload?: unknown) => {
+    if (!event.sender.isDestroyed()) event.reply(channel, payload);
+  };
+  triggerRun(tasksArray, send);
 });
 
 ipcMain.on('stop-bot', () => {
   activeEngine?.cancel();
+});
+
+ipcMain.handle('get-schedule', () => {
+  const cfg = readConfig();
+  const schedule = cfg.schedule ?? { enabled: false, intervalHours: 6 };
+  return { ...schedule, nextRunAt: nextScheduledRun?.toISOString() ?? null };
+});
+
+ipcMain.handle('save-schedule', (_e, schedule: { enabled: boolean; intervalHours: number }) => {
+  const cfg = readConfig();
+  cfg.schedule = schedule;
+  writeConfig(cfg);
+  if (schedule.enabled) startScheduler(schedule.intervalHours);
+  else clearScheduler();
+  return { success: true };
 });
 
 ipcMain.on('open-path', (_event, p) => {
@@ -351,6 +427,7 @@ function setupUserFiles() {
             browser_path: userConfig.settings?.browser_path ?? '',
           },
           tasks: Array.isArray(userConfig.tasks) ? userConfig.tasks : defaultConfig.tasks,
+          schedule: userConfig.schedule ?? defaultConfig.schedule,
         };
 
         fs.writeFileSync(configDest, JSON.stringify(merged, null, 2), 'utf-8');
@@ -384,6 +461,46 @@ async function createWindow() {
       nodeIntegration: false,
       contextIsolation: true,
     },
+  });
+
+  // Intercept close → hide to tray instead of quitting
+  win.on('close', (event) => {
+    if (!isQuitting) {
+      event.preventDefault();
+      win.hide();
+    }
+  });
+
+  // Set up system tray
+  const iconPath = path.join(__dirname, '../assets/icon.ico');
+  let trayIcon = nativeImage.createEmpty();
+  if (fs.existsSync(iconPath)) {
+    trayIcon = nativeImage.createFromPath(iconPath);
+  }
+  tray = new Tray(trayIcon);
+  tray.setToolTip('Coupang Bot');
+  tray.setContextMenu(
+    Menu.buildFromTemplate([
+      {
+        label: 'Open',
+        click: () => {
+          win.show();
+          win.focus();
+        },
+      },
+      { type: 'separator' },
+      {
+        label: 'Quit',
+        click: () => {
+          isQuitting = true;
+          app.quit();
+        },
+      },
+    ]),
+  );
+  tray.on('double-click', () => {
+    win.show();
+    win.focus();
   });
 
   const telegramId = store.get('telegram_id');
@@ -520,12 +637,24 @@ function setupAutoUpdater(win: BrowserWindow) {
 app.whenReady().then(async () => {
   setupUserFiles();
   await createWindow();
+  // Restore schedule from saved config
+  try {
+    const cfg = readConfig();
+    const schedule = cfg.schedule as { enabled: boolean; intervalHours: number } | undefined;
+    if (schedule?.enabled) startScheduler(schedule.intervalHours);
+  } catch {
+    // config not readable yet — skip
+  }
 });
 
-app.on('window-all-closed', () => {
+app.on('before-quit', () => {
+  isQuitting = true;
   if (updateRetryTimer) {
     clearTimeout(updateRetryTimer);
     updateRetryTimer = null;
   }
-  if (process.platform !== 'darwin') app.quit();
+  clearScheduler();
 });
+
+// App lives in the tray; do nothing when the window is hidden
+app.on('window-all-closed', () => {});

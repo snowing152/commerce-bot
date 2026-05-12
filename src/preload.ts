@@ -84,4 +84,9 @@ contextBridge.exposeInMainWorld('api', {
   startTelegramAuth: () => ipcRenderer.invoke('start-telegram-auth'),
   checkAuthToken: (token: string) => ipcRenderer.invoke('check-auth-token', token),
   clearChromeDebugProfile: () => ipcRenderer.invoke('clear-chrome-debug-profile'),
+
+  // Schedule
+  getSchedule: () => ipcRenderer.invoke('get-schedule'),
+  saveSchedule: (cfg: { enabled: boolean; intervalHours: number }) =>
+    ipcRenderer.invoke('save-schedule', cfg),
 });

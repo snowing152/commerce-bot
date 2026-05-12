@@ -174,6 +174,7 @@ export class BrowserManager {
         '--disable-extensions',
         '--lang=ko-KR',
         '--new-window',
+        '--start-minimized',
         'https://www.coupang.com',
       ];
 

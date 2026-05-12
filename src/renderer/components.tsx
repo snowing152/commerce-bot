@@ -118,6 +118,12 @@ const iconPaths: Record<string, React.ReactNode> = {
       <polyline points="21 15 16 10 5 21" />
     </>
   ),
+  clock: (
+    <>
+      <circle cx="12" cy="12" r="10" />
+      <polyline points="12 6 12 12 16 14" />
+    </>
+  ),
 };
 
 export interface IconProps {

@@ -1,6 +1,12 @@
 export {};
 
 declare global {
+  interface ScheduleConfig {
+    enabled: boolean;
+    intervalHours: number;
+    nextRunAt: string | null;
+  }
+
   interface Window {
     api: {
       startBot(tasks: unknown[]): void;
@@ -21,6 +27,8 @@ declare global {
       startTelegramAuth(): Promise<string>;
       checkAuthToken(token: string): Promise<{ success: boolean; telegramId?: number }>;
       clearChromeDebugProfile(): Promise<{ success: boolean; path: string; error?: string }>;
+      getSchedule(): Promise<ScheduleConfig>;
+      saveSchedule(cfg: Omit<ScheduleConfig, 'nextRunAt'>): Promise<{ success: boolean }>;
       // event listeners — all return an unsubscribe cleanup function
       onLog(cb: (msg: string) => void): () => void;
       onDone(cb: (path: string | null) => void): () => void;

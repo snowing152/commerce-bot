@@ -321,6 +321,8 @@ export interface DashboardPageProps {
   onStopBot?: () => void;
   onClearResults?: () => void;
   onExportResults?: () => void;
+  initialSchedule?: ScheduleConfig | null;
+  onSaveSchedule?: (cfg: Omit<ScheduleConfig, 'nextRunAt'>) => Promise<void>;
 }
 
 const seedLogs = (count = 40): LogEntry[] => {
@@ -361,6 +363,8 @@ export function DashboardPage({
   onStopBot,
   onClearResults,
   onExportResults,
+  initialSchedule,
+  onSaveSchedule,
 }: DashboardPageProps) {
   const { t } = useT();
   const [tasks, setTasks] = useState<Task[]>(() => initialTasks ?? []);
@@ -382,6 +386,10 @@ export function DashboardPage({
   const [foundTaskIds, setFoundTaskIds] = useState<Set<string>>(new Set());
   const [confirmClear, setConfirmClear] = useState(false);
   const logScrollRef = useRef<HTMLDivElement>(null);
+  const [scheduleConfig, setScheduleConfig] = useState<ScheduleConfig | null>(
+    () => initialSchedule ?? null,
+  );
+  const [showSchedule, setShowSchedule] = useState(false);
 
   const groupedResults = useMemo(() => {
     const groups: Array<{ runId: number | null; items: BotResult[] }> = [];
@@ -878,6 +886,19 @@ export function DashboardPage({
 
         <div className="w-px h-5 bg-zinc-800" />
 
+        <div className="relative">
+          <Button
+            variant="ghost"
+            size="md"
+            onClick={() => setShowSchedule(true)}
+            title="Scheduled search"
+            leadingIcon={<Icon name="clock" className="w-3.5 h-3.5" />}
+          />
+          {scheduleConfig?.enabled && (
+            <span className="absolute top-0.5 right-0.5 w-2 h-2 rounded-full bg-emerald-500 pointer-events-none" />
+          )}
+        </div>
+
         {screenshotPath && (
           <Button
             variant="ghost"
@@ -903,6 +924,18 @@ export function DashboardPage({
           />
         </div>
       </footer>
+
+      {showSchedule && (
+        <ScheduleModal
+          config={scheduleConfig ?? { enabled: false, intervalHours: 6, nextRunAt: null }}
+          onClose={() => setShowSchedule(false)}
+          onSave={async (cfg) => {
+            await onSaveSchedule?.(cfg);
+            setScheduleConfig({ ...cfg, nextRunAt: null });
+            setShowSchedule(false);
+          }}
+        />
+      )}
 
       {showNewTask && <NewTaskDialog onClose={() => setShowNewTask(false)} onSubmit={addTask} />}
       {editingTask && (
@@ -1042,6 +1075,108 @@ function NewTaskDialog({
           </div>
         </div>
       </form>
+    </div>
+  );
+}
+
+const INTERVAL_OPTIONS: { label: string; value: number }[] = [
+  { label: '1 hour', value: 1 },
+  { label: '2 hours', value: 2 },
+  { label: '3 hours', value: 3 },
+  { label: '6 hours', value: 6 },
+  { label: '12 hours', value: 12 },
+  { label: '24 hours', value: 24 },
+];
+
+function formatTimeUntil(isoString: string): string {
+  const diff = new Date(isoString).getTime() - Date.now();
+  if (diff <= 0) return 'soon';
+  const totalMin = Math.floor(diff / 60000);
+  const h = Math.floor(totalMin / 60);
+  const m = totalMin % 60;
+  return h > 0 ? `${h}h ${m}m` : `${m}m`;
+}
+
+function ScheduleModal({
+  config,
+  onClose,
+  onSave,
+}: {
+  config: ScheduleConfig;
+  onClose: () => void;
+  onSave: (cfg: Omit<ScheduleConfig, 'nextRunAt'>) => Promise<void>;
+}) {
+  const [enabled, setEnabled] = useState(config.enabled);
+  const [intervalHours, setIntervalHours] = useState(config.intervalHours);
+  const [saving, setSaving] = useState(false);
+
+  const handleSave = async () => {
+    setSaving(true);
+    await onSave({ enabled, intervalHours });
+    setSaving(false);
+  };
+
+  return (
+    <div
+      className="absolute inset-0 z-50 grid place-items-center bg-black/50 backdrop-blur-sm"
+      onClick={onClose}
+    >
+      <div
+        className="w-[400px] rounded-lg border border-zinc-800 bg-zinc-950 shadow-[0_30px_80px_-20px_rgba(0,0,0,0.8)]"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="px-5 pt-5 pb-4 border-b border-zinc-800/70">
+          <h2 className="text-[14px] font-semibold text-zinc-100 tracking-tight">
+            Scheduled Search
+          </h2>
+          <p className="text-[11.5px] text-zinc-500 mt-0.5">
+            Automatically run searches in the background
+          </p>
+        </div>
+        <div className="px-5 py-4 space-y-4">
+          <label className="flex items-center gap-3 cursor-pointer select-none">
+            <input
+              type="checkbox"
+              checked={enabled}
+              onChange={(e) => setEnabled(e.target.checked)}
+              className="w-4 h-4 rounded accent-emerald-500"
+            />
+            <span className="text-[13px] text-zinc-200">Enable automatic scheduled runs</span>
+          </label>
+          <div className={enabled ? '' : 'opacity-40 pointer-events-none'}>
+            <label className="block">
+              <span className="text-[11.5px] font-medium text-zinc-300 block mb-1.5">
+                Repeat every
+              </span>
+              <select
+                value={intervalHours}
+                onChange={(e) => setIntervalHours(Number(e.target.value))}
+                className="h-8 w-full px-2.5 text-[13px] rounded-md bg-zinc-900/60 border border-zinc-800 text-zinc-100 focus:outline-none focus:border-zinc-600 focus:ring-1 focus:ring-zinc-600 transition-colors"
+              >
+                {INTERVAL_OPTIONS.map((o) => (
+                  <option key={o.value} value={o.value}>
+                    {o.label}
+                  </option>
+                ))}
+              </select>
+            </label>
+          </div>
+          {enabled && config.nextRunAt && (
+            <p className="text-[11.5px] text-zinc-500">
+              Next run in:{' '}
+              <span className="text-zinc-300">{formatTimeUntil(config.nextRunAt)}</span>
+            </p>
+          )}
+        </div>
+        <div className="px-5 py-3.5 border-t border-zinc-800/70 flex items-center justify-end gap-1.5 bg-zinc-900/30">
+          <Button variant="ghost" size="md" onClick={onClose}>
+            Cancel
+          </Button>
+          <Button variant="primary" size="md" onClick={handleSave} loading={saving}>
+            Save
+          </Button>
+        </div>
+      </div>
     </div>
   );
 }
