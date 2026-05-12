@@ -364,7 +364,7 @@ export function DashboardPage({
 }: DashboardPageProps) {
   const { t } = useT();
   const [tasks, setTasks] = useState<Task[]>(() => initialTasks ?? []);
-  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [selectedId, setSelectedId] = useState<string | null>(() => initialTasks?.[0]?.id ?? null);
   const [localLogs, setLocalLogs] = useState<LogEntry[]>(() => seedLogs(2));
   const [autoscroll, setAutoscroll] = useState(true);
   const [filter, setFilter] = useState('ALL');
@@ -396,13 +396,6 @@ export function DashboardPage({
     }
     return groups;
   }, [results]);
-
-  useEffect(() => {
-    if (initialTasks && initialTasks.length > 0) {
-      setTasks(initialTasks);
-      setSelectedId(initialTasks[0]?.id ?? null);
-    }
-  }, []);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {

@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import ReactDOM from 'react-dom/client';
 import './styles.css';
 import { SubscriptionPage, SubscriptionInfo } from './pages';
@@ -12,7 +12,7 @@ function SubscriptionApp() {
   const [loading, setLoading] = useState(true);
   const [fetchError, setFetchError] = useState<string | null>(null);
 
-  const fetchStatus = async () => {
+  const fetchStatus = useCallback(async () => {
     setLoading(true);
     setFetchError(null);
     try {
@@ -37,13 +37,13 @@ function SubscriptionApp() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [lang, t]);
 
   useEffect(() => {
     fetchStatus();
     const unsub = window.api.onSubscriptionUpdated(fetchStatus);
     return unsub;
-  }, []);
+  }, [fetchStatus]);
 
   if (loading) {
     return (

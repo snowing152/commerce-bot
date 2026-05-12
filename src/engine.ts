@@ -1,10 +1,10 @@
 import * as patchright from 'patchright';
-import { Page, Locator, Browser, BrowserContext } from 'patchright';
-import { promises as fs, existsSync } from 'fs';
+import { Page, Browser, BrowserContext } from 'patchright';
+import { promises as fs } from 'fs';
 import * as path from 'path';
-import { spawn, ChildProcess } from 'child_process';
-import * as os from 'os';
-import { Humanizer, getFreePort, isCDPReady, waitForCDP } from './utils';
+import { Humanizer, isCDPReady, waitForCDP } from './utils';
+import { BrowserManager } from './browser-manager';
+import { Matcher } from './matcher';
 
 export interface Task {
   keyword: string;
@@ -43,55 +43,33 @@ type LogLevel = 'INFO' | 'DEBUG' | 'WARN' | 'SKIP' | 'ACTION' | 'SUCCESS' | 'ERR
 export class AutomationEngine {
   private config!: BotConfig;
   private selectors!: Selectors;
-  // Store the active port so launch and connect use the same value
-  private currentDebugPort = 9222;
   private resultCounter = 0;
   private cancelled = false;
-  private browserKilled = false;
-  private browserProcess: ChildProcess | null = null;
 
   private userDataPath: string;
   private logFilePath: string;
-  private readonly portLockFile: string;
   private logWriteQueue: Promise<void> = Promise.resolve();
+  private readonly browser: BrowserManager;
+  private readonly matcher: Matcher;
 
   constructor(userDataPath: string) {
     this.userDataPath = userDataPath;
     this.logFilePath = path.join(this.userDataPath, 'bot_log.txt');
-    this.portLockFile = path.join(this.userDataPath, 'debug_port.lock');
-  }
-
-  private async readPortLock(): Promise<number | null> {
-    try {
-      const raw = await fs.readFile(this.portLockFile, 'utf-8');
-      const port = parseInt(raw.trim(), 10);
-      if (Number.isFinite(port) && port > 0 && port <= 65535) return port;
-    } catch (_) {
-      // Missing file is expected on first run.
-    }
-    return null;
-  }
-
-  private async writePortLock(port: number): Promise<void> {
-    try {
-      await fs.writeFile(this.portLockFile, String(port), 'utf-8');
-    } catch (error) {
-      const errMessage = error instanceof Error ? error.message : String(error);
-      this.logStep('ERROR', `Failed to write port lock: ${errMessage}`, 'writePortLock');
-    }
+    this.browser = new BrowserManager(userDataPath, 9222, (level, message, context) =>
+      this.logStep(level, message, context),
+    );
+    this.matcher = new Matcher((level, message, context) => this.logStep(level, message, context));
   }
 
   public onLog?: (msg: string) => void;
   public onResult?: (data: BotResult) => void;
 
-  // Internal logging helper
   private log(msg: string) {
-    console.log(msg); // Keep console output for local debugging
-    // Keep log-file writes ordered without blocking the hot path.
+    console.log(msg);
     this.logWriteQueue = this.logWriteQueue
       .then(() => fs.appendFile(this.logFilePath, `${msg}\n`, 'utf-8'))
       .catch(() => {});
-    if (this.onLog) this.onLog(msg); // Forward to the UI
+    if (this.onLog) this.onLog(msg);
   }
 
   private logStep(level: LogLevel, message: string, context?: string) {
@@ -119,38 +97,6 @@ export class AutomationEngine {
     this.logStep('WARN', 'Stop requested by user. Winding down...', 'cancel');
   }
 
-  // Cleanly tear down a browser we spawned. On Windows, plain SIGTERM only
-  // signals the parent — renderer/helper children stay alive and hold the
-  // user-data-dir lock. taskkill /T /F walks the tree.
-  private async killBrowserProcess(): Promise<void> {
-    if (!this.browserProcess || this.browserKilled) return;
-    const pid = this.browserProcess.pid;
-    this.browserKilled = true;
-    if (!pid) return;
-
-    try {
-      if (process.platform === 'win32') {
-        await new Promise<void>((resolve) => {
-          const killer = spawn('taskkill', ['/pid', String(pid), '/T', '/F'], {
-            stdio: 'ignore',
-            windowsHide: true,
-          });
-          killer.once('exit', () => resolve());
-          killer.once('error', () => resolve());
-        });
-      } else {
-        this.browserProcess.kill();
-      }
-    } catch (error) {
-      const errMessage = error instanceof Error ? error.message : String(error);
-      this.logStep(
-        'ERROR',
-        `Failed to terminate browser ${pid}: ${errMessage}`,
-        'killBrowserProcess',
-      );
-    }
-  }
-
   // Like Humanizer.wait, but bails out early on cancellation so Stop feels
   // responsive during long inter-task pauses.
   private async cancellableWait(min: number, max: number): Promise<void> {
@@ -163,17 +109,10 @@ export class AutomationEngine {
     }
   }
 
-  /**
-   * Safely executes a Promise, logging any errors with context instead of failing silently.
-   * @param action The Promise to execute.
-   * @param context A description of the operation for logging purposes.
-   * @param fallback The value to return if the action throws an error.
-   */
   private async safeExecute<T>(action: Promise<T>, context: string, fallback: T): Promise<T> {
     try {
       return await action;
     } catch (error) {
-      // Extract the message safely whether the error is an Error object or a string
       const errMessage = error instanceof Error ? error.message : String(error);
       this.logStep('ERROR', `Failed during: ${context}. Reason: ${errMessage}`, 'safeExecute');
       return fallback;
@@ -216,224 +155,9 @@ export class AutomationEngine {
     this.selectors = JSON.parse(selectorsRaw) as Selectors;
   }
 
-  /**
-   * Determines the executable path for the browser.
-   * Prioritizes config and environment variables for flexible overrides.
-   */
-  private findBrowserPath(customConfigPath?: string): string {
-    if (customConfigPath && existsSync(customConfigPath)) {
-      return customConfigPath;
-    }
-
-    const envPath = process.env.CHROME_PATH || process.env.PUPPETEER_EXECUTABLE_PATH;
-    if (envPath && existsSync(envPath)) {
-      return envPath;
-    }
-
-    const platform = os.platform();
-    const defaultPaths: string[] = [];
-
-    if (platform === 'win32') {
-      const localAppData = process.env.LOCALAPPDATA || path.join(os.homedir(), 'AppData', 'Local');
-      const programFiles = process.env['ProgramFiles'] || 'C:\\Program Files';
-      const programFilesX86 = process.env['ProgramFiles(x86)'] || 'C:\\Program Files (x86)';
-
-      defaultPaths.push(
-        // Chrome (most reliable for stealth — preferred)
-        path.join(programFiles, 'Google', 'Chrome', 'Application', 'chrome.exe'),
-        path.join(programFilesX86, 'Google', 'Chrome', 'Application', 'chrome.exe'),
-        path.join(localAppData, 'Google', 'Chrome', 'Application', 'chrome.exe'),
-        // Edge
-        path.join(programFilesX86, 'Microsoft', 'Edge', 'Application', 'msedge.exe'),
-        path.join(programFiles, 'Microsoft', 'Edge', 'Application', 'msedge.exe'),
-        // Brave
-        path.join(programFiles, 'BraveSoftware', 'Brave-Browser', 'Application', 'brave.exe'),
-        path.join(programFilesX86, 'BraveSoftware', 'Brave-Browser', 'Application', 'brave.exe'),
-        path.join(localAppData, 'BraveSoftware', 'Brave-Browser', 'Application', 'brave.exe'),
-        // Vivaldi
-        path.join(localAppData, 'Vivaldi', 'Application', 'vivaldi.exe'),
-        path.join(programFiles, 'Vivaldi', 'Application', 'vivaldi.exe'),
-        // Opera / Opera GX
-        path.join(localAppData, 'Programs', 'Opera', 'opera.exe'),
-        path.join(localAppData, 'Programs', 'Opera GX', 'opera.exe'),
-        // Chromium
-        path.join(localAppData, 'Chromium', 'Application', 'chrome.exe'),
-      );
-    } else if (platform === 'darwin') {
-      defaultPaths.push(
-        '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome',
-        '/Applications/Microsoft Edge.app/Contents/MacOS/Microsoft Edge',
-        '/Applications/Brave Browser.app/Contents/MacOS/Brave Browser',
-        '/Applications/Vivaldi.app/Contents/MacOS/Vivaldi',
-        '/Applications/Opera.app/Contents/MacOS/Opera',
-        '/Applications/Chromium.app/Contents/MacOS/Chromium',
-      );
-    }
-
-    for (const candidate of defaultPaths) {
-      if (existsSync(candidate)) return candidate;
-    }
-
-    throw new Error(
-      'Browser executable path not found. Set CHROME_PATH, provide browser_path in config.json, or install Google Chrome.',
-    );
-  }
-
-  // Map a resolved executable path to a friendly name and the browser's
-  // private-browsing CLI flag. Chrome and forks like Brave/Vivaldi/Chromium
-  // use --incognito; Edge uses -inprivate; Opera uses --private.
-  private static detectBrowser(browserPath: string): { name: string; privateFlag: string } {
-    const p = browserPath.toLowerCase();
-    if (/msedge|microsoft[\\/ ]edge/.test(p)) return { name: 'Edge', privateFlag: '-inprivate' };
-    if (/brave/.test(p)) return { name: 'Brave', privateFlag: '--incognito' };
-    if (/opera/.test(p)) return { name: 'Opera', privateFlag: '--private' };
-    if (/vivaldi/.test(p)) return { name: 'Vivaldi', privateFlag: '--incognito' };
-    if (/chromium/.test(p)) return { name: 'Chromium', privateFlag: '--incognito' };
-    if (/chrome/.test(p)) return { name: 'Chrome', privateFlag: '--incognito' };
-    return { name: 'Unknown Chromium-based', privateFlag: '--incognito' };
-  }
-
-  private async launchBrowser() {
-    try {
-      // Allocate the port before any filesystem checks to aid debugging
-      this.currentDebugPort = await getFreePort(this.currentDebugPort);
-      this.logStep(
-        'INFO',
-        `Allocated dynamic debugging port: ${this.currentDebugPort}`,
-        'launchBrowser',
-      );
-
-      const browserPath = this.findBrowserPath(this.config?.settings?.browser_path);
-      const { name: browserName, privateFlag } = AutomationEngine.detectBrowser(browserPath);
-      this.logStep(
-        'INFO',
-        `Found browser executable at: ${browserPath} (${browserName} — using ${privateFlag})`,
-        'launchBrowser',
-      );
-      if (browserName !== 'Chrome') {
-        this.logStep(
-          'WARN',
-          `${browserName} private mode is more likely to trigger Coupang RET9999 than Chrome incognito. If searches start getting blocked, install Chrome.`,
-          'launchBrowser',
-        );
-      }
-
-      const profileDir = path.join(this.userDataPath, 'chrome_debug_profile');
-      // Wipe any leftover profile from a prior run so each launch starts
-      // clean — same end result as incognito for our purposes, without
-      // tripping Coupang's RET9999 anti-bot (which true --incognito does).
-      try {
-        await fs.rm(profileDir, { recursive: true, force: true });
-      } catch (error) {
-        const errMessage = error instanceof Error ? error.message : String(error);
-        this.logStep(
-          'WARN',
-          `Could not wipe profile before launch (continuing): ${errMessage}`,
-          'launchBrowser',
-        );
-      }
-      if (!existsSync(profileDir)) {
-        try {
-          await fs.mkdir(profileDir, { recursive: true });
-        } catch (error) {
-          const errMessage = error instanceof Error ? error.message : String(error);
-          // We must explicitly log system-level write errors
-          this.logStep(
-            'ERROR',
-            `Failed to create user profile directory at ${profileDir}: ${errMessage}`,
-            'launchBrowser',
-          );
-        }
-      }
-
-      const args = [
-        `--remote-debugging-port=${this.currentDebugPort}`,
-        `--remote-debugging-address=127.0.0.1`,
-        `--user-data-dir=${profileDir}`,
-        // Real incognito: --incognito + a starting URL forces Chrome to open
-        // the URL in an incognito window (the visible badge appears). Without
-        // the URL, Chrome often ignores --incognito for new-tab windows.
-        // Note: incognito is a known anti-bot signal. If Coupang starts
-        // returning RET9999, drop --incognito and rely on the per-run profile
-        // wipe instead.
-        privateFlag,
-        '--no-first-run',
-        '--no-default-browser-check',
-        '--disable-extensions',
-        '--lang=ko-KR',
-        '--new-window',
-        'https://www.coupang.com',
-      ];
-
-      this.logStep('ACTION', `Launching browser: ${browserPath}`, 'launchBrowser');
-      const child = spawn(browserPath, args, {
-        stdio: 'ignore',
-        detached: true,
-      });
-      this.browserProcess = child;
-      await this.writePortLock(this.currentDebugPort);
-      child.unref();
-    } catch (error) {
-      const errMessage = error instanceof Error ? error.message : String(error);
-      this.logStep('ERROR', `Failed to launch browser: ${errMessage}`, 'launchBrowser');
-      throw error;
-    }
-  }
-
-  private async findCards(page: Page): Promise<{ loc: Locator | null; count: number }> {
-    const selectors = [
-      'li.ProductUnit_productUnit__Qd6sv',
-      'li[class*="ProductUnit"]',
-      'ul.ProductList li',
-      '.search-product-list li',
-    ];
-    for (const sel of selectors) {
-      const l = page.locator(sel);
-      const c = await l.count().catch(() => 0);
-      if (c > 0) {
-        this.logStep('DEBUG', `Selector "${sel}" matched ${c} cards.`, 'findCards');
-        return { loc: l, count: c };
-      }
-    }
-    this.logStep('DEBUG', 'No cards found with known selectors.', 'findCards');
-    return { loc: null, count: 0 };
-  }
-
-  private async getName(card: Locator): Promise<string> {
-    const selectors = [
-      '.ProductUnit_productNameV2__cV9cw',
-      '[class*="productName"]',
-      '.product-name',
-      'span.name',
-      'dt.title',
-    ];
-    for (const sel of selectors) {
-      try {
-        const t = await card.locator(sel).first().innerText({ timeout: 800 });
-        if (t?.trim()) return t.trim();
-      } catch (_) {}
-    }
-    return '';
-  }
-
-  private async isAdCard(card: Locator): Promise<boolean> {
-    try {
-      const [enCount, koCount, ariaCount, classCount] = await Promise.all([
-        card.locator('span:has-text("AD")').count(),
-        card.locator('span:has-text("광고")').count(),
-        card.locator('button[aria-label="Ad information"]').count(),
-        card.locator('[class*="AdMark"]').count(),
-      ]);
-      return enCount > 0 || koCount > 0 || ariaCount > 0 || classCount > 0;
-    } catch (_) {
-      return false;
-    }
-  }
-
   async run(): Promise<string | null> {
     await this.loadConfigs();
 
-    // Create screenshots folder under user data where we have write access.
     const shots = path.join(this.userDataPath, 'screenshots');
     try {
       await fs.access(shots);
@@ -441,17 +165,21 @@ export class AutomationEngine {
       await fs.mkdir(shots, { recursive: true });
     }
 
-    const savedPort = await this.readPortLock();
+    const savedPort = await this.browser.readPortLock();
     if (savedPort !== null) {
-      this.currentDebugPort = savedPort;
-      this.logStep('INFO', `Restored debug port from lock file: ${this.currentDebugPort}`, 'run');
+      this.browser.currentDebugPort = savedPort;
+      this.logStep(
+        'INFO',
+        `Restored debug port from lock file: ${this.browser.currentDebugPort}`,
+        'run',
+      );
     }
 
-    this.logStep('INFO', `Checking debug port ${this.currentDebugPort}...`, 'run');
-    if (!(await isCDPReady(this.currentDebugPort))) {
+    this.logStep('INFO', `Checking debug port ${this.browser.currentDebugPort}...`, 'run');
+    if (!(await isCDPReady(this.browser.currentDebugPort))) {
       this.logStep('ACTION', 'Browser is closed. Launching automatically...', 'run');
-      await this.launchBrowser();
-      if (!(await waitForCDP(this.currentDebugPort, 15000))) {
+      await this.browser.launch(this.config?.settings?.browser_path);
+      if (!(await waitForCDP(this.browser.currentDebugPort, 15000))) {
         throw new Error('Failed to connect to the browser.');
       }
     }
@@ -460,7 +188,7 @@ export class AutomationEngine {
     let browser: Browser | null = null;
     try {
       browser = await patchright.chromium.connectOverCDP(
-        `http://127.0.0.1:${this.currentDebugPort}`,
+        `http://127.0.0.1:${this.browser.currentDebugPort}`,
       );
     } catch (e: any) {
       throw new Error(`Connection error: ${e.message}`);
@@ -491,17 +219,11 @@ export class AutomationEngine {
 
     if (!page) {
       page = await ctx.newPage();
-      await page.goto('https://www.coupang.com', {
-        waitUntil: 'load',
-        timeout: 60000,
-      });
+      await page.goto('https://www.coupang.com', { waitUntil: 'load', timeout: 60000 });
     } else {
       await page.bringToFront();
       if (page.url() === 'about:blank' || page.url().includes('newtab')) {
-        await page.goto('https://www.coupang.com', {
-          waitUntil: 'load',
-          timeout: 60000,
-        });
+        await page.goto('https://www.coupang.com', { waitUntil: 'load', timeout: 60000 });
       }
     }
 
@@ -571,10 +293,7 @@ export class AutomationEngine {
             `Search input not visible. Navigating to ${this.config.settings.base_url}.`,
             'run',
           );
-          await page.goto(this.config.settings.base_url, {
-            waitUntil: 'load',
-            timeout: 60000,
-          });
+          await page.goto(this.config.settings.base_url, { waitUntil: 'load', timeout: 60000 });
           await Humanizer.wait(2000, 3500);
         }
         this.logStep('ACTION', 'Focusing search input.', 'run');
@@ -608,10 +327,7 @@ export class AutomationEngine {
             'run',
           );
           await page
-            .goto(this.config.settings.base_url, {
-              waitUntil: 'load',
-              timeout: 30000,
-            })
+            .goto(this.config.settings.base_url, { waitUntil: 'load', timeout: 30000 })
             .catch(() => undefined);
           await Humanizer.wait(3000, 5000);
           continue;
@@ -619,8 +335,7 @@ export class AutomationEngine {
 
         let found = false;
         const maxP = this.config.settings.max_pages_to_search || 3;
-        const normalizeName = (s: string) => s.toLowerCase().replace(/\s+/g, ' ').trim();
-        const targetNormalized = normalizeName(task.target_name);
+        const targetNormalized = Matcher.normalizeName(task.target_name);
         this.logStep('DEBUG', `Target for matching: "${targetNormalized}"`, 'run');
 
         for (let pageNum = 1; pageNum <= maxP; pageNum++) {
@@ -639,7 +354,7 @@ export class AutomationEngine {
           await Humanizer.wait(600, 1400);
           await Humanizer.randomMove(page);
 
-          const { loc: cards, count } = await this.findCards(page);
+          const { loc: cards, count } = await this.matcher.findCards(page);
           this.logStep('INFO', `PAGE ${pageNum} cards found: ${count}`, 'run');
           if (!cards || count === 0) {
             this.logStep('INFO', `PAGE ${pageNum} no product cards found.`, 'run');
@@ -673,7 +388,7 @@ export class AutomationEngine {
               );
               continue;
             }
-            if (await this.isAdCard(card)) {
+            if (await this.matcher.isAdCard(card)) {
               this.logStep(
                 'SKIP',
                 `PAGE ${pageNum} card #${cardNumber} skipped: AD detected`,
@@ -683,7 +398,7 @@ export class AutomationEngine {
             }
             nonAdCount += 1;
             cardsScanned += 1;
-            const name = await this.getName(card);
+            const name = await this.matcher.getName(card);
             if (!name) {
               this.logStep(
                 'SKIP',
@@ -693,7 +408,7 @@ export class AutomationEngine {
               continue;
             }
             this.logStep('DEBUG', `PAGE ${pageNum} card #${cardNumber} title: "${name}"`, 'run');
-            const nameMatches = normalizeName(name).includes(targetNormalized);
+            const nameMatches = Matcher.normalizeName(name).includes(targetNormalized);
             if (nameMatches) {
               this.logStep(
                 'SUCCESS',
@@ -783,9 +498,7 @@ export class AutomationEngine {
               try {
                 this.logStep('ACTION', `PAGE ${pageNum} clicking next page`, 'run');
                 await next.click();
-                await page.waitForLoadState('domcontentloaded', {
-                  timeout: 30000,
-                });
+                await page.waitForLoadState('domcontentloaded', { timeout: 30000 });
                 await Humanizer.wait(1500, 3000);
                 this.logStep('INFO', `PAGE ${pageNum + 1} loaded`, 'run');
                 nextOk = true;
@@ -867,7 +580,7 @@ export class AutomationEngine {
       }
 
       this.logStep('SUCCESS', `Screenshot saved: ${file}`, 'run');
-      return screenshotPath; // Return the file path for the UI open button
+      return screenshotPath;
     } catch (e: any) {
       this.logStep('ERROR', `Execution error: ${e.message}`, 'run');
       return null;
@@ -878,7 +591,7 @@ export class AutomationEngine {
           await browser.close();
         } catch (_) {}
       }
-      await this.killBrowserProcess();
+      await this.browser.kill();
     }
   }
 }
