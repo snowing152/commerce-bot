@@ -700,14 +700,12 @@ export class AutomationEngine {
 
         let found = false;
         const maxP = this.config.settings.max_pages_to_search || 3;
-        const targetFragment = task.target_name
-          .trim()
-          .split(" ")
-          .slice(0, 4)
-          .join(" ");
+        const normalizeName = (s: string) =>
+          s.toLowerCase().replace(/\s+/g, " ").trim();
+        const targetNormalized = normalizeName(task.target_name);
         this.logStep(
           "DEBUG",
-          `Target fragment for matching: "${targetFragment}"`,
+          `Target for matching: "${targetNormalized}"`,
           "run",
         );
 
@@ -793,13 +791,12 @@ export class AutomationEngine {
               `PAGE ${pageNum} card #${cardNumber} title: "${name}"`,
               "run",
             );
-            const nameMatches = name
-              .toLowerCase()
-              .includes(targetFragment.toLowerCase());
+            const nameMatches =
+              normalizeName(name).includes(targetNormalized);
             if (nameMatches) {
               this.logStep(
                 "SUCCESS",
-                `PAGE ${pageNum} card #${cardNumber} matched target (name contains "${targetFragment}")`,
+                `PAGE ${pageNum} card #${cardNumber} matched target (name contains "${targetNormalized}")`,
                 "run",
               );
               this.emitResult(task, pageNum, cardNumber);
@@ -874,7 +871,7 @@ export class AutomationEngine {
             } else {
               this.logStep(
                 "SKIP",
-                `PAGE ${pageNum} card #${cardNumber} skipped: no match to "${targetFragment}"`,
+                `PAGE ${pageNum} card #${cardNumber} skipped: no match to "${targetNormalized}"`,
                 "run",
               );
             }

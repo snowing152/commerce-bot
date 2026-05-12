@@ -4,6 +4,7 @@ import './styles.css'
 import { DashboardPage, Task, LogEntry } from './pages'
 import { ErrorBoundary } from './ErrorBoundary'
 import { BotResult } from './types'
+import { LanguageProvider, useT } from './i18n'
 
 interface EngineTask {
   keyword: string
@@ -40,11 +41,12 @@ function fromSessionTasks(raw: EngineTask[]): Task[] {
 }
 
 function DashboardApp() {
+  const { t } = useT()
   const [botState, setBotState] = useState<'idle' | 'running' | 'paused'>('idle')
   const [version, setVersion] = useState('')
   const [initialTasks, setInitialTasks] = useState<Task[] | undefined>(undefined)
   const [ipcLogs, setIpcLogs] = useState<LogEntry[]>([])
-  const [updateStatus, setUpdateStatus] = useState('')
+  const [updateStatus, setUpdateStatus] = useState<{ key: string; params?: Record<string, string | number> } | null>(null)
   const [user, setUser] = useState<{ first_name: string; photo_url: string | null } | null>(null)
   const [results, setResults] = useState<BotResult[]>([])
   const [screenshotPath, setScreenshotPath] = useState<string | null>(null)
@@ -78,9 +80,9 @@ function DashboardApp() {
       } catch { /* discard malformed payload */ }
     })
     const unDone     = window.api.onDone(path => { setBotState('idle'); setScreenshotPath(path); setUpdateProgress(null) })
-    const unStatus   = window.api.onUpdateStatus(text => setUpdateStatus(text))
+    const unStatus   = window.api.onUpdateStatus(payload => setUpdateStatus(payload))
     const unError    = window.api.onUpdateError(p => {
-      if (p.message) setUpdateStatus(`Update error: ${p.message}`)
+      if (p.message) setUpdateStatus({ key: 'update.errorPrefix', params: { message: p.message } })
       setUpdateProgress(null)
     })
     const unResult   = window.api.onBotResult(d => setResults(prev => [...prev.slice(-499), d as BotResult]))
@@ -121,7 +123,7 @@ function DashboardApp() {
             <circle cx="12" cy="12" r="9" stroke="currentColor" strokeOpacity="0.18" strokeWidth="2.5" />
             <path d="M12 3a9 9 0 0 1 9 9" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" />
           </svg>
-          Loading…
+          {t('common.loading')}
         </div>
       </div>
     )
@@ -138,7 +140,7 @@ function DashboardApp() {
       onStartBot={handleStartBot}
       onTasksChanged={handleTasksChanged}
       extraLogs={ipcLogs}
-      updateStatus={updateStatus}
+      updateStatus={updateStatus ? t(updateStatus.key, updateStatus.params) : ''}
       user={user}
       results={results}
       screenshotPath={screenshotPath}
@@ -153,5 +155,5 @@ function DashboardApp() {
 }
 
 ReactDOM.createRoot(document.getElementById('root')!).render(
-  <ErrorBoundary><DashboardApp /></ErrorBoundary>
+  <ErrorBoundary><LanguageProvider><DashboardApp /></LanguageProvider></ErrorBoundary>
 )

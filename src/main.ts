@@ -416,9 +416,11 @@ async function createWindow() {
 //  AUTO UPDATER
 // ═══════════════════════════════════════════════════════════
 
+type UpdateStatus = { key: string; params?: Record<string, string | number> };
+
 function setupAutoUpdater(win: BrowserWindow) {
   if (!autoUpdater) {
-    win.webContents.send("update-status", "Модуль автообновления недоступен.");
+    win.webContents.send("update-status", { key: "update.unavailable" } satisfies UpdateStatus);
     return;
   }
 
@@ -428,13 +430,13 @@ function setupAutoUpdater(win: BrowserWindow) {
   if (!app.isPackaged) {
     win.webContents.send(
       "update-status",
-      "Автообновление доступно только в собранной версии.",
+      { key: "update.devOnly" } satisfies UpdateStatus,
     );
     return;
   }
 
-  const sendStatus = (text: string) => {
-    if (!win.isDestroyed()) win.webContents.send("update-status", text);
+  const sendStatus = (status: UpdateStatus) => {
+    if (!win.isDestroyed()) win.webContents.send("update-status", status);
   };
   const sendProgress = (percent: number) => {
     if (!win.isDestroyed()) win.webContents.send("update-progress", percent);
@@ -463,13 +465,13 @@ function setupAutoUpdater(win: BrowserWindow) {
     if (updateRetryTimer) clearTimeout(updateRetryTimer);
 
     sendUpdateError(message, retryInSec, updateRetryAttempt);
-    sendStatus(`Ошибка обновления. Повтор через ${retryInSec} сек.`);
+    sendStatus({ key: "update.errorRetry", params: { sec: retryInSec } });
 
     updateRetryTimer = setTimeout(() => {
       if (win.isDestroyed()) return;
-      sendStatus("Повторяю проверку обновлений...");
+      sendStatus({ key: "update.retrying" });
       autoUpdater.checkForUpdatesAndNotify().catch((error: any) => {
-        scheduleRetry(error?.message || String(error || "Неизвестная ошибка"));
+        scheduleRetry(error?.message || String(error || "Unknown error"));
       });
     }, delay);
   };
@@ -479,45 +481,45 @@ function setupAutoUpdater(win: BrowserWindow) {
 
   autoUpdater.on("checking-for-update", () => {
     clearUpdateError();
-    sendStatus("Проверяю обновления...");
+    sendStatus({ key: "update.checking" });
   });
 
   autoUpdater.on("update-available", () => {
     updateRetryAttempt = 0;
     clearUpdateError();
-    sendStatus("Найдено обновление. Загрузка в фоне...");
-    sendLog("[СИСТЕМА] Найдено обновление. Начинаю загрузку...");
+    sendStatus({ key: "update.found" });
+    sendLog("[SYSTEM] Update found. Starting download...");
   });
 
   autoUpdater.on("update-not-available", () => {
     updateRetryAttempt = 0;
     clearUpdateError();
-    sendStatus("Установлена последняя версия");
+    sendStatus({ key: "update.uptodate" });
   });
 
   autoUpdater.on("download-progress", (progressObj: any) => {
     const percent = Math.max(0, Math.min(100, Math.round(progressObj.percent)));
     sendProgress(percent);
-    sendStatus(`Скачивание обновления: ${percent}%`);
+    sendStatus({ key: "update.downloading", params: { percent } });
   });
 
   autoUpdater.on("update-downloaded", () => {
     updateRetryAttempt = 0;
     clearUpdateError();
-    sendStatus("Обновление готово. Перезапуск...");
-    sendLog("[СИСТЕМА] Обновление загружено. Перезапуск через 3 секунды...");
+    sendStatus({ key: "update.ready" });
+    sendLog("[SYSTEM] Update downloaded. Restarting in 3 seconds...");
     setTimeout(() => autoUpdater.quitAndInstall(), 3000);
   });
 
   autoUpdater.on("error", (error: any) => {
-    const message = error?.message || String(error || "Неизвестная ошибка");
-    sendLog(`[СИСТЕМА] Ошибка обновления: ${message}`);
+    const message = error?.message || String(error || "Unknown error");
+    sendLog(`[SYSTEM] Update error: ${message}`);
     scheduleRetry(message);
   });
 
   autoUpdater.checkForUpdatesAndNotify().catch((error: any) => {
-    const message = error?.message || String(error || "Неизвестная ошибка");
-    sendLog(`[СИСТЕМА] Ошибка обновления: ${message}`);
+    const message = error?.message || String(error || "Unknown error");
+    sendLog(`[SYSTEM] Update error: ${message}`);
     scheduleRetry(message);
   });
 }
