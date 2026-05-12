@@ -3,6 +3,7 @@ import ReactDOM from 'react-dom/client'
 import './styles.css'
 import { AuthPage } from './pages'
 import { ErrorBoundary } from './ErrorBoundary'
+import { LanguageProvider } from './i18n'
 
 function AuthApp() {
   const [status, setStatus] = useState<'idle' | 'waiting' | 'confirmed' | 'error'>('idle')
@@ -53,5 +54,5 @@ function AuthApp() {
 }
 
 ReactDOM.createRoot(document.getElementById('root')!).render(
-  <ErrorBoundary><AuthApp /></ErrorBoundary>
+  <ErrorBoundary><LanguageProvider><AuthApp /></LanguageProvider></ErrorBoundary>
 )

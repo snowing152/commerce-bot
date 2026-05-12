@@ -26,7 +26,10 @@ declare global {
       onDone(cb: (path: string | null) => void): () => void
       onBotResult(cb: (data: unknown) => void): () => void
       onUpdateProgress(cb: (percent: number) => void): () => void
-      onUpdateStatus(cb: (text: string) => void): () => void
+      onUpdateStatus(cb: (payload: {
+        key: string
+        params?: Record<string, string | number>
+      }) => void): () => void
       onUpdateError(cb: (p: {
         message: string | null
         retryInSec: number | null

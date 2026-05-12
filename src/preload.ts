@@ -42,8 +42,13 @@ contextBridge.exposeInMainWorld("api", {
   // New IPC channels
   getVersion: () => ipcRenderer.invoke("get-version"),
 
-  onUpdateStatus: (callback: (text: string) => void) => {
-    const handler = (_e: IpcRendererEvent, text: string) => callback(text);
+  onUpdateStatus: (
+    callback: (payload: {
+      key: string;
+      params?: Record<string, string | number>;
+    }) => void,
+  ) => {
+    const handler = (_e: IpcRendererEvent, payload: any) => callback(payload);
     ipcRenderer.on("update-status", handler);
     return () => ipcRenderer.removeListener("update-status", handler);
   },
