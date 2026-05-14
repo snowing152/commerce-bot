@@ -28,6 +28,7 @@ export interface BotConfig {
 export interface FilterSelectors {
   panel: string;
   expandButton: string;
+  categoryLabels?: string;
   attributeLabels: string;
   ratingLabels: string;
   pricePresets: string;
@@ -49,6 +50,7 @@ export interface Selectors {
 export interface BotResult {
   id: number;
   date: string;
+  time?: string;
   keyword: string;
   targetName: string;
   location: string;
@@ -95,11 +97,14 @@ export class AutomationEngine {
 
   private emitResult(task: Task, pageNumber: number, position: number) {
     this.resultCounter += 1;
-    const dateStr = new Date().toLocaleDateString('en-GB').replace(/\//g, '.');
+    const now = new Date();
+    const dateStr = now.toLocaleDateString('en-GB').replace(/\//g, '.');
+    const timeStr = now.toLocaleTimeString('en-GB', { hour12: false });
     const location = `Page ${pageNumber} Position ${position}`;
     const payload: BotResult = {
       id: this.resultCounter,
       date: dateStr,
+      time: timeStr,
       keyword: task.keyword,
       targetName: task.target_name,
       location,
@@ -166,18 +171,53 @@ export class AutomationEngine {
       typeof filterSel.priceSearchBtn === 'string'
     ) {
       const [min, max] = task.cost;
+
+      // Wait for the price inputs to be present after previous filter reloads
       await page
-        .fill(filterSel.minPriceInput, min > 0 ? String(min) : '', { timeout: 2000 })
+        .waitForSelector(filterSel.minPriceInput, { state: 'attached', timeout: 8000 })
         .catch(() => undefined);
-      await page
-        .fill(filterSel.maxPriceInput, max > 0 ? String(max) : '', { timeout: 2000 })
-        .catch(() => undefined);
-      await page
-        .locator(filterSel.priceSearchBtn)
-        .first()
-        .click({ timeout: 2000 })
-        .catch(() => undefined);
-      this.logStep('ACTION', `Applied price range: ${min}~${max}`, 'filters');
+
+      const fillInput = async (sel: string, value: string): Promise<boolean> => {
+        try {
+          const loc = page.locator(sel).first();
+          if (!(await loc.count())) return false;
+          await loc.click({ timeout: 3000 });
+          await page.keyboard.press('Control+A');
+          if (value) {
+            await page.keyboard.type(value, { delay: 50 });
+          } else {
+            await page.keyboard.press('Delete');
+          }
+          return true;
+        } catch {
+          return false;
+        }
+      };
+
+      const minOk = await fillInput(filterSel.minPriceInput, min > 0 ? String(min) : '');
+      const maxOk = await fillInput(filterSel.maxPriceInput, max > 0 ? String(max) : '');
+      this.logStep('DEBUG', `Price inputs filled: min=${minOk} max=${maxOk}`, 'filters');
+
+      if (minOk || maxOk) {
+        await page.waitForTimeout(200);
+        const priceUrlBefore = page.url();
+        await page
+          .locator(filterSel.priceSearchBtn)
+          .first()
+          .click({ timeout: 3000 })
+          .catch(() => undefined);
+        // 검색 triggers a page reload — wait for it to settle before scraping
+        await page
+          .waitForFunction((prev: string) => location.href !== prev, priceUrlBefore, {
+            timeout: 8000,
+          })
+          .catch(() => undefined);
+        await page.waitForLoadState('domcontentloaded', { timeout: 5000 }).catch(() => undefined);
+        await page.waitForTimeout(600);
+        this.logStep('ACTION', `Applied price range: ${min}~${max}`, 'filters');
+      } else {
+        this.logStep('WARN', 'Price inputs not found on page — price filter skipped', 'filters');
+      }
     }
   }
 
@@ -186,36 +226,54 @@ export class AutomationEngine {
     if (!filterSel) return false;
 
     const selectors = [
+      filterSel.categoryLabels,
       filterSel.attributeLabels,
       filterSel.ratingLabels,
       filterSel.pricePresets,
     ].filter((s): s is string => typeof s === 'string');
 
     if (selectors.length > 0) {
-      const clicked = await page
+      const result = await page
         .evaluate(
           ({ selectors, target }) => {
-            const norm = (s: string) => s.normalize('NFC').replace(/\s+/g, ' ').trim();
+            // Normalize: NFC + collapse whitespace + remove spaces around slashes
+            const norm = (s: string) =>
+              s
+                .normalize('NFC')
+                .replace(/\s+/g, ' ')
+                .replace(/\s*\/\s*/g, '/')
+                .trim();
             const wanted = norm(target);
+            const found: string[] = [];
             for (const sel of selectors) {
               const els = document.querySelectorAll(sel);
               for (const el of Array.from(els)) {
-                if (norm(el.textContent || '') === wanted) {
+                const text = norm(el.textContent || '');
+                if (text) found.push(text);
+                if (text === wanted) {
                   (el as HTMLElement).click();
-                  return true;
+                  return { clicked: true, candidates: [] };
                 }
               }
             }
-            return false;
+            return { clicked: false, candidates: found.slice(0, 20) };
           },
           { selectors, target: label },
         )
-        .catch(() => false);
+        .catch(() => ({ clicked: false, candidates: [] as string[] }));
 
-      if (clicked) {
+      if (result.clicked) {
         await page.waitForTimeout(300);
         this.logStep('ACTION', `Applied filter: ${label}`, 'filters');
         return true;
+      }
+
+      if (result.candidates.length > 0) {
+        this.logStep(
+          'DEBUG',
+          `Available filter labels: ${result.candidates.join(' | ')}`,
+          'filters',
+        );
       }
     }
 
@@ -377,7 +435,13 @@ export class AutomationEngine {
     this.logStep('INFO', `Current URL: ${page.url()}`, 'run');
     if (title.includes('Access Denied') || title.includes('Robot')) {
       await browser.close();
-      throw new Error('Browser blocked by site (Access Denied).');
+      // Kill the stale browser process and wipe the port lock so the next
+      // run launches a fresh browser instead of reconnecting to this blocked one.
+      await this.browser.killByPort(this.browser.currentDebugPort);
+      await this.browser.clearLock();
+      throw new Error(
+        'Browser blocked by Coupang (Access Denied). The stale browser session has been cleared — please restart the bot.',
+      );
     }
     this.logStep('SUCCESS', 'Connection successful!', 'run');
 

@@ -6,6 +6,7 @@
   "filters": {
     "panel": ".filter-function-bar",
     "expandButton": ".filter-function-bar-list-btn",
+    "categoryLabels": "li.filter-function-bar-category label",
     "attributeLabels": "li.filter-function-bar-attribute label:not(.disabled)",
     "ratingLabels": "li.filter-function-bar-rating label",
     "pricePresets": "li label.filter-function-bar-price-item",

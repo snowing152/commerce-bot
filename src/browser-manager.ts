@@ -219,4 +219,38 @@ export class BrowserManager {
       this.log('ERROR', `Failed to terminate browser ${pid}: ${errMessage}`, 'killBrowserProcess');
     }
   }
+
+  async clearLock(): Promise<void> {
+    try {
+      await fs.unlink(this.portLockFile);
+    } catch (_) {
+      // File may not exist — that's fine.
+    }
+  }
+
+  // Kill whichever process is currently listening on `port` (Windows only).
+  // Used to clean up a stale browser left over from a previous run.
+  async killByPort(port: number): Promise<void> {
+    if (process.platform !== 'win32') return;
+    try {
+      // netstat output: "  TCP  127.0.0.1:PORT  ...  PID"
+      const { execSync } = await import('child_process');
+      const out = execSync(`netstat -ano -p TCP`, { encoding: 'utf-8', windowsHide: true } as any);
+      const re = new RegExp(`:${port}\\s+\\S+\\s+LISTENING\\s+(\\d+)`);
+      const match = re.exec(out);
+      if (!match) return;
+      const pid = match[1];
+      this.log('INFO', `Killing stale browser process PID=${pid} on port ${port}`, 'killByPort');
+      await new Promise<void>((resolve) => {
+        const killer = spawn('taskkill', ['/pid', pid, '/T', '/F'], {
+          stdio: 'ignore',
+          windowsHide: true,
+        });
+        killer.once('exit', () => resolve());
+        killer.once('error', () => resolve());
+      });
+    } catch (_) {
+      // Best-effort — ignore errors.
+    }
+  }
 }

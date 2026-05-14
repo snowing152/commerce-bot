@@ -123,20 +123,33 @@ async function triggerRun(
 }
 
 // ── Scheduler ────────────────────────────────────────────────
+const SCHEDULE_JITTER_PCT = 0.15; // ±15% — randomizes interval to avoid IP-ban patterns
+
 function clearScheduler(): void {
   if (scheduleTimer) {
-    clearInterval(scheduleTimer);
+    clearTimeout(scheduleTimer);
     scheduleTimer = null;
   }
   nextScheduledRun = null;
 }
 
+function jitteredDelay(intervalHours: number): number {
+  const base = intervalHours * 60 * 60 * 1000;
+  const jitter = base * SCHEDULE_JITTER_PCT * (Math.random() * 2 - 1); // [-15%, +15%]
+  return Math.max(60_000, Math.round(base + jitter));
+}
+
 function startScheduler(intervalHours: number): void {
   clearScheduler();
-  const ms = intervalHours * 60 * 60 * 1000;
-  nextScheduledRun = new Date(Date.now() + ms);
-  scheduleTimer = setInterval(async () => {
-    if (activeEngine) return;
+
+  const tick = async () => {
+    if (activeEngine) {
+      // Bot already running — try again after a short delay
+      const retryMs = 60_000;
+      nextScheduledRun = new Date(Date.now() + retryMs);
+      scheduleTimer = setTimeout(tick, retryMs);
+      return;
+    }
     const send = (channel: string, payload?: unknown) => {
       if (win && !win.isDestroyed()) win.webContents.send(channel, payload);
     };
@@ -147,8 +160,14 @@ function startScheduler(intervalHours: number): void {
     if (Notification.isSupported()) {
       new Notification({ title: 'Coupang Bot', body: 'Scheduled search complete.' }).show();
     }
-    nextScheduledRun = new Date(Date.now() + ms);
-  }, ms);
+    const nextMs = jitteredDelay(intervalHours);
+    nextScheduledRun = new Date(Date.now() + nextMs);
+    scheduleTimer = setTimeout(tick, nextMs);
+  };
+
+  const firstMs = jitteredDelay(intervalHours);
+  nextScheduledRun = new Date(Date.now() + firstMs);
+  scheduleTimer = setTimeout(tick, firstMs);
 }
 
 // ── Helper: load HTML page — dev server or built file ───────
@@ -233,13 +252,14 @@ ipcMain.handle('export-results-csv', async () => {
     });
     if (canceled || !filePath) return { success: false };
 
-    const header = '#,Run,Date,Keyword,Product,Location\n';
+    const header = '#,Run,Date,Time,Keyword,Product,Location\n';
     const rows = results
       .map((r: any) =>
         [
           r.id ?? '',
           r.run_id ?? '',
           `"${(r.date ?? '').replace(/"/g, '""')}"`,
+          `"${(r.time ?? '').replace(/"/g, '""')}"`,
           `"${(r.keyword ?? '').replace(/"/g, '""')}"`,
           `"${(r.targetName ?? '').replace(/"/g, '""')}"`,
           `"${(r.location ?? '').replace(/"/g, '""')}"`,
@@ -247,7 +267,7 @@ ipcMain.handle('export-results-csv', async () => {
       )
       .join('\n');
 
-    fs.writeFileSync(filePath, header + rows, 'utf-8');
+    fs.writeFileSync(filePath, '﻿' + header + rows, 'utf-8');
     return { success: true, path: filePath };
   } catch (error) {
     const errMessage = error instanceof Error ? error.message : String(error);

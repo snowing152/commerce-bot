@@ -997,7 +997,8 @@ export function DashboardPage({
                           >
                             <td className="px-4 py-2 text-zinc-600 tabular-nums">{r.id}</td>
                             <td className="px-4 py-2 text-zinc-500 tabular-nums whitespace-nowrap">
-                              {r.date}
+                              <div>{r.date}</div>
+                              {r.time && <div className="text-[10px] text-zinc-600">{r.time}</div>}
                             </td>
                             <td className="px-4 py-2 text-zinc-300 max-w-[140px]">
                               <span className="block truncate">{r.keyword}</span>

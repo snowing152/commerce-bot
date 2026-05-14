@@ -85,7 +85,7 @@ export async function confirmAuthToken(token: string, tgUser: any): Promise<bool
         photo_url: tgUser.photo_url || null,
         subscription_status: 'trial',
         trial_start: now.toISOString(),
-        trial_end: new Date(now.getTime() + 1 * 86400_000).toISOString(),
+        trial_end: new Date(now.getTime() + 3 * 86400_000).toISOString(),
       });
   }
 
