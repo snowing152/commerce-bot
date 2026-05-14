@@ -34,6 +34,31 @@ export interface LogEntry {
   message: string;
 }
 
+/* ---- Promotion Progress ---- */
+interface RankPoint {
+  page: number;
+  pos: number;
+}
+interface RankingStat {
+  keyword: string;
+  targetName: string;
+  first: RankPoint;
+  latest: RankPoint;
+  pageImprovement: number;
+  posImprovement: number;
+  history: RankPoint[];
+  runCount: number;
+}
+
+function parseLocation(location: string): RankPoint | null {
+  const m = location.match(/page\s+(\d+)\s+position\s+(\d+)/i);
+  if (!m) return null;
+  const page = parseInt(m[1], 10),
+    pos = parseInt(m[2], 10);
+  if (isNaN(page) || isNaN(pos) || page < 1 || pos < 1) return null;
+  return { page, pos };
+}
+
 /* ============================================================ */
 /*  AUTH PAGE                                                    */
 /* ============================================================ */
@@ -388,6 +413,7 @@ export function DashboardPage({
   const [unreadResults, setUnreadResults] = useState(0);
   const [foundTaskIds, setFoundTaskIds] = useState<Set<string>>(new Set());
   const [confirmClear, setConfirmClear] = useState(false);
+  const [statsOpen, setStatsOpen] = useState(false);
   const logScrollRef = useRef<HTMLDivElement>(null);
   const [scheduleConfig, setScheduleConfig] = useState<ScheduleConfig | null>(
     () => initialSchedule ?? null,
@@ -407,6 +433,41 @@ export function DashboardPage({
       }
     }
     return groups;
+  }, [results]);
+
+  const rankingStats = useMemo((): RankingStat[] => {
+    const map = new Map<string, BotResult[]>();
+    for (const r of results) {
+      const key = `${r.keyword}|||${r.targetName}`;
+      const b = map.get(key);
+      b ? b.push(r) : map.set(key, [r]);
+    }
+    const stats: RankingStat[] = [];
+    for (const [, bucket] of map) {
+      const parsed = bucket
+        .map((r) => ({ pt: parseLocation(r.location), id: r.id }))
+        .filter((x): x is { pt: RankPoint; id: number } => x.pt !== null)
+        .sort((a, b) => a.id - b.id);
+      if (parsed.length < 2) continue;
+      const history = parsed.map((x) => x.pt);
+      const first = history[0],
+        latest = history[history.length - 1];
+      stats.push({
+        keyword: bucket[0].keyword,
+        targetName: bucket[0].targetName,
+        first,
+        latest,
+        pageImprovement: first.page - latest.page,
+        posImprovement: first.pos - latest.pos,
+        history,
+        runCount: parsed.length,
+      });
+    }
+    return stats.sort((a, b) =>
+      b.pageImprovement !== a.pageImprovement
+        ? b.pageImprovement - a.pageImprovement
+        : b.posImprovement - a.posImprovement,
+    );
   }, [results]);
 
   useEffect(() => {
@@ -777,6 +838,109 @@ export function DashboardPage({
           {/* Results view */}
           {rightTab === 'results' && (
             <div className="flex-1 overflow-y-auto">
+              {rankingStats.length > 0 && (
+                <div className="border-b border-zinc-800/70">
+                  <button
+                    onClick={() => setStatsOpen((v) => !v)}
+                    className="w-full flex items-center justify-between px-4 h-9 hover:bg-zinc-900/40 transition-colors"
+                  >
+                    <div className="flex items-center gap-2">
+                      <Icon name="activity" className="w-3.5 h-3.5 text-zinc-400" />
+                      <span className="text-[11px] font-semibold tracking-[0.06em] text-zinc-300 uppercase">
+                        Promotion Progress
+                      </span>
+                      <span className="inline-flex items-center justify-center h-4 min-w-[16px] px-1 rounded-sm bg-zinc-700 text-zinc-300 text-[10px] font-semibold tabular-nums">
+                        {rankingStats.length}
+                      </span>
+                    </div>
+                    <Icon
+                      name="chevronRight"
+                      className={`w-3.5 h-3.5 text-zinc-500 transition-transform ${statsOpen ? 'rotate-90' : ''}`}
+                    />
+                  </button>
+                  {statsOpen && (
+                    <div className="px-3 pb-3 pt-1 flex flex-wrap gap-2">
+                      {rankingStats.map((s) => {
+                        const improved =
+                          s.pageImprovement > 0 ||
+                          (s.pageImprovement === 0 && s.posImprovement > 0);
+                        const worsened =
+                          s.pageImprovement < 0 ||
+                          (s.pageImprovement === 0 && s.posImprovement < 0);
+                        const arrow = improved ? '↑' : worsened ? '↓' : '→';
+                        const arrowColor = improved
+                          ? 'text-emerald-400'
+                          : worsened
+                            ? 'text-red-400'
+                            : 'text-zinc-500';
+                        const chips = s.history.slice(-8);
+                        const ref = chips[0];
+                        return (
+                          <div
+                            key={`${s.keyword}|||${s.targetName}`}
+                            className="flex-shrink-0 w-[220px] rounded-md border border-zinc-800/80 bg-zinc-900/50 px-3 py-2.5 space-y-1.5"
+                          >
+                            <div>
+                              <p className="text-[12px] font-medium text-zinc-100 truncate leading-tight">
+                                {s.targetName}
+                              </p>
+                              <p className="text-[10.5px] text-zinc-500 truncate mt-px">
+                                {s.keyword}
+                              </p>
+                            </div>
+                            <div className="flex items-center gap-1.5">
+                              <span className="text-[11px] font-mono text-zinc-400 tabular-nums">
+                                P{s.first.page}·{s.first.pos}
+                              </span>
+                              <span className="text-[11px] text-zinc-600">→</span>
+                              <span className="text-[11px] font-mono font-semibold text-zinc-100 tabular-nums">
+                                P{s.latest.page}·{s.latest.pos}
+                              </span>
+                              <span
+                                className={`text-[13px] font-bold leading-none ml-auto ${arrowColor}`}
+                              >
+                                {arrow}
+                              </span>
+                            </div>
+                            <div className="flex items-center gap-0.5 flex-wrap">
+                              {chips.map((pt, i) => {
+                                const isFirst = i === 0;
+                                const chipImproved =
+                                  !isFirst &&
+                                  (pt.page < ref.page ||
+                                    (pt.page === ref.page && pt.pos < ref.pos));
+                                const chipWorsened =
+                                  !isFirst &&
+                                  (pt.page > ref.page ||
+                                    (pt.page === ref.page && pt.pos > ref.pos));
+                                const chipCls = isFirst
+                                  ? 'bg-zinc-700 text-zinc-300'
+                                  : chipImproved
+                                    ? 'bg-emerald-500/15 text-emerald-300 border border-emerald-500/20'
+                                    : chipWorsened
+                                      ? 'bg-red-500/10 text-red-300 border border-red-500/15'
+                                      : 'bg-zinc-800 text-zinc-400';
+                                return (
+                                  <span
+                                    key={i}
+                                    className={`inline-flex items-center justify-center h-4 px-1 rounded text-[9px] font-mono tabular-nums font-medium ${chipCls}`}
+                                    title={`Page ${pt.page} Position ${pt.pos}`}
+                                  >
+                                    {pt.page}·{pt.pos}
+                                  </span>
+                                );
+                              })}
+                            </div>
+                            <p className="text-[10px] text-zinc-600 tabular-nums">
+                              {s.runCount} runs
+                            </p>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+              )}
               {results.length === 0 ? (
                 <div className="px-4 py-10 text-center">
                   <Icon name="target" className="w-5 h-5 text-zinc-700 mx-auto mb-2" />
