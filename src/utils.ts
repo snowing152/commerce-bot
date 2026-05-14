@@ -1,5 +1,5 @@
-import { Page, Locator } from "patchright";
-import * as net from "net";
+import { Page, Locator } from 'patchright';
+import * as net from 'net';
 
 /**
  * Requests a free port from the operating system and immediately releases it.
@@ -11,7 +11,7 @@ export async function getFreePort(fallbackPort = 9222): Promise<number> {
     const server = net.createServer();
 
     // Catch system-level network errors to prevent application crashes
-    server.on("error", (err) => {
+    server.on('error', (err) => {
       console.error(
         `[ERROR] Failed to allocate dynamic port: ${err.message}. Using fallback: ${fallbackPort}`,
       );
@@ -23,7 +23,7 @@ export async function getFreePort(fallbackPort = 9222): Promise<number> {
       const address = server.address();
 
       // Ensure the address is an AddressInfo object, not a string (Unix domain sockets)
-      if (address && typeof address !== "string") {
+      if (address && typeof address !== 'string') {
         const port = address.port;
         // The server must be closed immediately so Chromium can bind to this port
         server.close(() => {
@@ -43,9 +43,7 @@ export async function getFreePort(fallbackPort = 9222): Promise<number> {
 export class Humanizer {
   static async wait(min: number, max: number) {
     // Use Math.random() to add unpredictable pauses and reduce bot detection.
-    await new Promise((r) =>
-      setTimeout(r, Math.floor(Math.random() * (max - min + 1) + min)),
-    );
+    await new Promise((r) => setTimeout(r, Math.floor(Math.random() * (max - min + 1) + min)));
   }
 
   static async move(page: Page, loc: Locator) {
@@ -79,15 +77,11 @@ export class Humanizer {
 
     while (Date.now() - startedAt < targetMs) {
       // Smooth scrolling simulates a person reading the page.
-      await page.evaluate(() =>
-        window.scrollBy({ top: 350, behavior: "smooth" }),
-      );
+      await page.evaluate(() => window.scrollBy({ top: 350, behavior: 'smooth' }));
       await this.wait(900, 1800);
       if (!expanded) {
         try {
-          const btn = page
-            .locator("button.expand, .product-detail-seemore-icon-wpui")
-            .first();
+          const btn = page.locator('button.expand, .product-detail-seemore-icon-wpui').first();
           if (await btn.isVisible({ timeout: 600 })) {
             await btn.click();
             expanded = true;
@@ -96,14 +90,12 @@ export class Humanizer {
         } catch (_) {}
       }
     }
-    await page.evaluate(() =>
-      window.scrollBy({ top: 800, behavior: "smooth" }),
-    );
+    await page.evaluate(() => window.scrollBy({ top: 800, behavior: 'smooth' }));
   }
 
   static date(): string {
     const n = new Date(),
-      f = (x: number) => String(x).padStart(2, "0");
+      f = (x: number) => String(x).padStart(2, '0');
     return `data(${n.getFullYear()}.${f(n.getMonth() + 1)}.${f(n.getDate())} ${f(n.getHours())}.${f(n.getMinutes())})`;
   }
 }

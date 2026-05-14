@@ -1,11 +1,11 @@
-export type Language = 'en' | 'ru'
+export type Language = 'en' | 'ru';
 
 export const LANGUAGES: { code: Language; label: string }[] = [
   { code: 'en', label: 'EN' },
   { code: 'ru', label: 'RU' },
-]
+];
 
-type Dict = Record<string, string>
+type Dict = Record<string, string>;
 
 const en: Dict = {
   // Common
@@ -49,7 +49,8 @@ const en: Dict = {
   'sub.daysSinceExpiry': 'Days since expiry',
   'sub.days': '{n} days',
   'sub.concurrent': 'Concurrent tasks',
-  'sub.renewalCopy': "Renewal is handled in our Telegram billing bot. You'll get a confirmation here when it completes.",
+  'sub.renewalCopy':
+    "Renewal is handled in our Telegram billing bot. You'll get a confirmation here when it completes.",
   'sub.extend': 'Extend via Telegram',
   'sub.help': 'Need help? Contact @coupangbot_support',
   'sub.loading': 'Loading subscription…',
@@ -106,7 +107,8 @@ const en: Dict = {
   // Task modal
   'modal.new.title': 'New task',
   'modal.edit.title': 'Edit task',
-  'modal.new.subtitle': 'The bot will poll Coupang for this product and order when it falls in band.',
+  'modal.new.subtitle':
+    'The bot will poll Coupang for this product and order when it falls in band.',
   'modal.edit.subtitle': 'Update the keyword and target product name.',
   'modal.keywordLabel': 'Search keyword',
   'modal.keywordHint': 'Korean text supported',
@@ -114,8 +116,31 @@ const en: Dict = {
   'modal.productLabel': 'Target product name',
   'modal.productHint': 'Substring match against listing titles',
   'modal.productPlaceholder': 'e.g. Galaxy Buds3 Pro 화이트',
+  'modal.filtersLabel': 'Filters',
+  'modal.filtersHint': 'Comma-separated labels, e.g. 로켓배송, 새 상품',
+  'modal.filtersPlaceholder': '로켓배송, 새 상품, ...',
+  'modal.priceRangeLabel': 'Price range',
   'modal.create': 'Create task',
   'modal.save': 'Save changes',
+
+  // Report problem modal
+  'report.button': 'Report Problem',
+  'report.title': 'Report a Problem',
+  'report.subtitle':
+    'Describe what happened — your last 50 log lines will be attached automatically.',
+  'report.typeLabel': 'Problem type',
+  'report.type.stuck': 'Bot stuck / not responding',
+  'report.type.notFound': 'Product not found',
+  'report.type.login': 'Login issue',
+  'report.type.browser': 'Browser did not open',
+  'report.type.schedule': 'Scheduled search not firing',
+  'report.type.other': 'Other',
+  'report.descLabel': 'What happened?',
+  'report.descPlaceholder': 'Describe the problem in as much detail as possible…',
+  'report.send': 'Send report',
+  'report.success.title': 'Report sent',
+  'report.success.body': 'We received your report. Thank you.',
+  'report.failed': 'Failed to send: {error}',
 
   // Auto-updater (from main.ts)
   'update.unavailable': 'Auto-updater unavailable.',
@@ -128,7 +153,7 @@ const en: Dict = {
   'update.errorRetry': 'Update error. Retrying in {sec}s.',
   'update.retrying': 'Retrying update check…',
   'update.errorPrefix': 'Update error: {message}',
-}
+};
 
 const ru: Dict = {
   // Common
@@ -172,7 +197,8 @@ const ru: Dict = {
   'sub.daysSinceExpiry': 'Дней после окончания',
   'sub.days': '{n} дн.',
   'sub.concurrent': 'Параллельных задач',
-  'sub.renewalCopy': 'Продление обрабатывает наш Telegram-бот биллинга. Подтверждение появится здесь по завершении.',
+  'sub.renewalCopy':
+    'Продление обрабатывает наш Telegram-бот биллинга. Подтверждение появится здесь по завершении.',
   'sub.extend': 'Продлить через Telegram',
   'sub.help': 'Нужна помощь? Напишите @coupangbot_support',
   'sub.loading': 'Загрузка подписки…',
@@ -229,7 +255,8 @@ const ru: Dict = {
   // Task modal
   'modal.new.title': 'Новая задача',
   'modal.edit.title': 'Изменить задачу',
-  'modal.new.subtitle': 'Бот будет опрашивать Coupang и оформит заказ, когда цена попадёт в диапазон.',
+  'modal.new.subtitle':
+    'Бот будет опрашивать Coupang и оформит заказ, когда цена попадёт в диапазон.',
   'modal.edit.subtitle': 'Обновите запрос и название товара.',
   'modal.keywordLabel': 'Поисковый запрос',
   'modal.keywordHint': 'Поддерживается корейский текст',
@@ -237,8 +264,31 @@ const ru: Dict = {
   'modal.productLabel': 'Название товара',
   'modal.productHint': 'Подстрока, ищется в названиях товаров',
   'modal.productPlaceholder': 'например Galaxy Buds3 Pro 화이트',
+  'modal.filtersLabel': 'Фильтры',
+  'modal.filtersHint': 'Через запятую, например 로켓배송, 새 상품',
+  'modal.filtersPlaceholder': '로켓배송, 새 상품, ...',
+  'modal.priceRangeLabel': 'Диапазон цен',
   'modal.create': 'Создать задачу',
   'modal.save': 'Сохранить изменения',
+
+  // Report problem modal
+  'report.button': 'Сообщить о проблеме',
+  'report.title': 'Сообщить о проблеме',
+  'report.subtitle':
+    'Опишите, что произошло — последние 50 строк лога будут прикреплены автоматически.',
+  'report.typeLabel': 'Тип проблемы',
+  'report.type.stuck': 'Бот завис / не отвечает',
+  'report.type.notFound': 'Товар не найден',
+  'report.type.login': 'Проблема со входом',
+  'report.type.browser': 'Браузер не открылся',
+  'report.type.schedule': 'Плановый поиск не запускается',
+  'report.type.other': 'Другое',
+  'report.descLabel': 'Что произошло?',
+  'report.descPlaceholder': 'Опишите проблему как можно подробнее…',
+  'report.send': 'Отправить отчёт',
+  'report.success.title': 'Отчёт отправлен',
+  'report.success.body': 'Мы получили ваш отчёт. Спасибо.',
+  'report.failed': 'Ошибка отправки: {error}',
 
   // Auto-updater
   'update.unavailable': 'Модуль автообновления недоступен.',
@@ -251,18 +301,18 @@ const ru: Dict = {
   'update.errorRetry': 'Ошибка обновления. Повтор через {sec} сек.',
   'update.retrying': 'Повторяю проверку обновлений…',
   'update.errorPrefix': 'Ошибка обновления: {message}',
-}
+};
 
-export const translations: Record<Language, Dict> = { en, ru }
+export const translations: Record<Language, Dict> = { en, ru };
 
 export function translate(
   lang: Language,
   key: string,
   params?: Record<string, string | number>,
 ): string {
-  const raw = translations[lang]?.[key] ?? translations.en[key] ?? key
-  if (!params) return raw
+  const raw = translations[lang]?.[key] ?? translations.en[key] ?? key;
+  if (!params) return raw;
   return raw.replace(/\{(\w+)\}/g, (_, name) =>
     Object.prototype.hasOwnProperty.call(params, name) ? String(params[name]) : `{${name}}`,
-  )
+  );
 }

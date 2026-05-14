@@ -4,27 +4,25 @@
   "add_to_cart_btn": "button.prod-cart-btn",
   "cart_link": "#wa-cart-link",
   "filters": {
-    "panel": "#searchOptionForm, .search-filter-options, .search-filters, .filter-function-bar",
-    "expandButton": "button:has-text(\"더보기\"), .search-filter-options-more, .btn-more-filter, .filter-function-bar-list-btn:has-text(\"더보기\")",
-    "groups": {
-      "delivery":  { "root": ".filter-function-bar-delivery",  "option": "label" },
-      "brand":     { "root": ".filter-function-bar-brand",     "option": "label, a" },
-      "attribute": { "root": ".filter-function-bar-attribute", "option": "label" },
-      "category":  { "root": ".filter-function-bar-category",  "option": "a" },
-      "rating":    { "root": ".filter-function-bar-rating",    "option": "label" },
-      "price":     { "root": ".filter-function-bar-price",     "option": ".filter-function-bar-price-item" }
-    },
-    "state": {
-      "selectedClass": "selected",
-      "disabledClass": "disabled",
-      "ariaSelected":  "aria-checked",
-      "ariaDisabled":  "aria-disabled"
-    },
-    "aliases": {
-      "rocket":        ["로켓배송", "rocket delivery", "판매자로켓"],
-      "free shipping": ["무료배송"],
-      "new product":   ["새 상품", "신상품"],
-      "out of stock":  ["품절제외", "재고있음"]
+    "panel": ".filter-function-bar",
+    "expandButton": ".filter-function-bar-list-btn",
+    "categoryLabels": "li.filter-function-bar-category label",
+    "attributeLabels": "li.filter-function-bar-attribute label:not(.disabled)",
+    "ratingLabels": "li.filter-function-bar-rating label",
+    "pricePresets": "li label.filter-function-bar-price-item",
+    "serviceLabels": "li.filter-function-bar-service label:not(.disabled)",
+    "selectedClass": "selected",
+    "disabledClass": "disabled",
+    "minPriceInput": "input[title='minPrice']",
+    "maxPriceInput": "input[title='maxPrice']",
+    "priceSearchBtn": "label[title='priceFilter']",
+    "deliveryAliases": {
+      "로켓배송": "deliveryFilterOption-rocket_luxury,rocket,coupang_global",
+      "로켓": "deliveryFilterOption-rocket_luxury,rocket,coupang_global",
+      "로켓럭셔리": "deliveryFilterOption-rocket_luxury",
+      "쿠팡직구": "deliveryFilterOption-coupang_global",
+      "탑브랜드": "deliveryFilterOption-top_brand",
+      "무료배송": "deliveryFilterOption-free"
     }
   }
 }

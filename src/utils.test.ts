@@ -1,13 +1,13 @@
-import * as net from "net";
-import { Humanizer, getFreePort } from "./utils";
+import * as net from 'net';
+import { Humanizer, getFreePort } from './utils';
 
 // Tell Jest to intercept calls to the 'net' module
-jest.mock("net");
+jest.mock('net');
 
 // Test group for the Humanizer class
-describe("Humanizer Utilities", () => {
+describe('Humanizer Utilities', () => {
   // Test 1: Date format check
-  test("date() should return a string in the correct format", () => {
+  test('date() should return a string in the correct format', () => {
     const dateStr = Humanizer.date();
 
     // Regex to validate data(YYYY.MM.DD HH.MM)
@@ -18,7 +18,7 @@ describe("Humanizer Utilities", () => {
   });
 
   // Test 2: wait() duration check (async test)
-  test("wait() should delay execution within the specified range", async () => {
+  test('wait() should delay execution within the specified range', async () => {
     const start = Date.now();
     const minTime = 100;
     const maxTime = 200;
@@ -34,13 +34,13 @@ describe("Humanizer Utilities", () => {
   });
 });
 
-describe("Dynamic Port Allocation: getFreePort", () => {
+describe('Dynamic Port Allocation: getFreePort', () => {
   afterEach(() => {
     // Reset mocks to prevent state leakage between tests
     jest.clearAllMocks();
   });
 
-  it("should resolve with a dynamically allocated port from the OS", async () => {
+  it('should resolve with a dynamically allocated port from the OS', async () => {
     // Mock a successful server creation and port assignment
     const mockServer = {
       listen: jest.fn((port: number, callback: () => void) => callback()),
@@ -61,22 +61,20 @@ describe("Dynamic Port Allocation: getFreePort", () => {
     expect(mockServer.close).toHaveBeenCalled();
   });
 
-  it("should return the fallback port if a system error occurs", async () => {
+  it('should return the fallback port if a system error occurs', async () => {
     // Mock a system-level network error (e.g., strict firewall blocking Node)
     const mockServer = {
       listen: jest.fn(),
       on: jest.fn((event: string, callback: (err: Error) => void) => {
-        if (event === "error") {
-          callback(new Error("EACCES: permission denied"));
+        if (event === 'error') {
+          callback(new Error('EACCES: permission denied'));
         }
       }),
     };
     (net.createServer as jest.Mock).mockReturnValue(mockServer);
 
     // Suppress console.error output during this specific test run to keep logs clean
-    const consoleSpy = jest
-      .spyOn(console, "error")
-      .mockImplementation(() => {});
+    const consoleSpy = jest.spyOn(console, 'error').mockImplementation(() => {});
 
     const port = await getFreePort(9222);
 

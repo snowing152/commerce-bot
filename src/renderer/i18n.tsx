@@ -1,55 +1,64 @@
-import React, { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react'
-import { Language, LANGUAGES, translate } from './translations'
+import React, { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
+import { Language, LANGUAGES, translate } from './translations';
 
-const STORAGE_KEY = 'coupang-bot.lang'
+const STORAGE_KEY = 'coupang-bot.lang';
 
 function detectInitialLanguage(): Language {
-  if (typeof window === 'undefined') return 'en'
+  if (typeof window === 'undefined') return 'en';
   try {
-    const saved = window.localStorage.getItem(STORAGE_KEY)
-    if (saved === 'en' || saved === 'ru') return saved
-  } catch { /* localStorage unavailable */ }
-  const nav = (typeof navigator !== 'undefined' && navigator.language) || ''
-  return nav.toLowerCase().startsWith('ru') ? 'ru' : 'en'
+    const saved = window.localStorage.getItem(STORAGE_KEY);
+    if (saved === 'en' || saved === 'ru') return saved;
+  } catch {
+    /* localStorage unavailable */
+  }
+  const nav = (typeof navigator !== 'undefined' && navigator.language) || '';
+  return nav.toLowerCase().startsWith('ru') ? 'ru' : 'en';
 }
 
 interface LanguageContextValue {
-  lang: Language
-  setLang: (lang: Language) => void
-  t: (key: string, params?: Record<string, string | number>) => string
+  lang: Language;
+  setLang: (lang: Language) => void;
+  t: (key: string, params?: Record<string, string | number>) => string;
 }
 
-const LanguageContext = createContext<LanguageContextValue | null>(null)
+const LanguageContext = createContext<LanguageContextValue | null>(null);
 
 export function LanguageProvider({ children }: { children: React.ReactNode }) {
-  const [lang, setLangState] = useState<Language>(() => detectInitialLanguage())
+  const [lang, setLangState] = useState<Language>(() => detectInitialLanguage());
 
   const setLang = useCallback((next: Language) => {
-    setLangState(next)
-    try { window.localStorage.setItem(STORAGE_KEY, next) } catch { /* ignore */ }
-  }, [])
+    setLangState(next);
+    try {
+      window.localStorage.setItem(STORAGE_KEY, next);
+    } catch {
+      /* ignore */
+    }
+  }, []);
 
   useEffect(() => {
-    document.documentElement.lang = lang
-  }, [lang])
+    document.documentElement.lang = lang;
+  }, [lang]);
 
-  const value = useMemo<LanguageContextValue>(() => ({
-    lang,
-    setLang,
-    t: (key, params) => translate(lang, key, params),
-  }), [lang, setLang])
+  const value = useMemo<LanguageContextValue>(
+    () => ({
+      lang,
+      setLang,
+      t: (key, params) => translate(lang, key, params),
+    }),
+    [lang, setLang],
+  );
 
-  return <LanguageContext.Provider value={value}>{children}</LanguageContext.Provider>
+  return <LanguageContext.Provider value={value}>{children}</LanguageContext.Provider>;
 }
 
 export function useT() {
-  const ctx = useContext(LanguageContext)
-  if (!ctx) throw new Error('useT must be used inside <LanguageProvider>')
-  return ctx
+  const ctx = useContext(LanguageContext);
+  if (!ctx) throw new Error('useT must be used inside <LanguageProvider>');
+  return ctx;
 }
 
 export function LanguageSwitcher({ className = '' }: { className?: string }) {
-  const { lang, setLang } = useT()
+  const { lang, setLang } = useT();
   return (
     <div
       role="group"
@@ -57,7 +66,7 @@ export function LanguageSwitcher({ className = '' }: { className?: string }) {
       className={`inline-flex items-center rounded-md border border-zinc-800 bg-zinc-900/40 p-0.5 ${className}`}
     >
       {LANGUAGES.map(({ code, label }) => {
-        const active = lang === code
+        const active = lang === code;
         return (
           <button
             key={code}
@@ -70,8 +79,8 @@ export function LanguageSwitcher({ className = '' }: { className?: string }) {
           >
             {label}
           </button>
-        )
+        );
       })}
     </div>
-  )
+  );
 }
