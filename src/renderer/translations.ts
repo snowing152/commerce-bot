@@ -116,6 +116,10 @@ const en: Dict = {
   'modal.productLabel': 'Target product name',
   'modal.productHint': 'Substring match against listing titles',
   'modal.productPlaceholder': 'e.g. Galaxy Buds3 Pro 화이트',
+  'modal.filtersLabel': 'Filters',
+  'modal.filtersHint': 'Comma-separated labels, e.g. 로켓배송, 새 상품',
+  'modal.filtersPlaceholder': '로켓배송, 새 상품, ...',
+  'modal.priceRangeLabel': 'Price range',
   'modal.create': 'Create task',
   'modal.save': 'Save changes',
 
@@ -260,6 +264,10 @@ const ru: Dict = {
   'modal.productLabel': 'Название товара',
   'modal.productHint': 'Подстрока, ищется в названиях товаров',
   'modal.productPlaceholder': 'например Galaxy Buds3 Pro 화이트',
+  'modal.filtersLabel': 'Фильтры',
+  'modal.filtersHint': 'Через запятую, например 로켓배송, 새 상품',
+  'modal.filtersPlaceholder': '로켓배송, 새 상품, ...',
+  'modal.priceRangeLabel': 'Диапазон цен',
   'modal.create': 'Создать задачу',
   'modal.save': 'Сохранить изменения',
 

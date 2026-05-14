@@ -9,6 +9,8 @@ import { Matcher } from './matcher';
 export interface Task {
   keyword: string;
   target_name: string;
+  filters?: string[];
+  cost?: [number, number];
 }
 
 export interface BotSettings {
@@ -23,11 +25,25 @@ export interface BotConfig {
   tasks: Task[];
 }
 
+export interface FilterSelectors {
+  panel: string;
+  expandButton: string;
+  attributeLabels: string;
+  ratingLabels: string;
+  pricePresets: string;
+  serviceLabels: string;
+  minPriceInput: string;
+  maxPriceInput: string;
+  priceSearchBtn: string;
+  deliveryAliases: Record<string, string>;
+}
+
 export interface Selectors {
   search_bar: string;
   add_to_cart_btn: string;
   search_button?: string;
   cart_link?: string;
+  filters?: FilterSelectors;
 }
 
 export interface BotResult {
@@ -89,6 +105,135 @@ export class AutomationEngine {
       location,
     };
     if (this.onResult) this.onResult(payload);
+  }
+
+  private async applyFilters(page: Page, task: Task): Promise<void> {
+    const filterSel = this.selectors.filters;
+    if (!filterSel) return;
+    if (typeof filterSel.panel !== 'string') return;
+
+    const labels = task.filters ?? [];
+    const hasCost = task.cost && (task.cost[0] > 0 || task.cost[1] > 0);
+    if (labels.length === 0 && !hasCost) return;
+
+    this.logStep('INFO', `Applying ${labels.length} filter(s)...`, 'filters');
+
+    if (typeof filterSel.attributeLabels === 'string') {
+      await page
+        .waitForSelector(filterSel.attributeLabels, { state: 'attached', timeout: 8000 })
+        .catch(() => undefined);
+    }
+    if (!(await page.locator(filterSel.panel).count())) {
+      this.logStep('WARN', 'Filter panel not found on page', 'filters');
+      return;
+    }
+
+    if (typeof filterSel.expandButton === 'string') {
+      const btnCount = await page.locator(filterSel.expandButton).count();
+      for (let i = 0; i < btnCount; i++) {
+        await page
+          .locator(filterSel.expandButton)
+          .nth(i)
+          .click({ timeout: 1500 })
+          .catch(() => undefined);
+        await page.waitForTimeout(150);
+      }
+    }
+
+    for (const label of labels) {
+      const before = page.url();
+      const clicked = await this.clickFilterByLabel(page, label.trim());
+      if (clicked) {
+        // Each filter click triggers a Coupang page reload; wait for it to settle
+        await page
+          .waitForFunction((prev) => location.href !== prev, before, { timeout: 5000 })
+          .catch(() => undefined);
+        await page.waitForLoadState('domcontentloaded', { timeout: 5000 }).catch(() => undefined);
+        if (typeof filterSel.attributeLabels === 'string') {
+          await page
+            .waitForSelector(filterSel.attributeLabels, { state: 'attached', timeout: 5000 })
+            .catch(() => undefined);
+        }
+        await page.waitForTimeout(500);
+      }
+    }
+
+    if (
+      hasCost &&
+      task.cost &&
+      typeof filterSel.minPriceInput === 'string' &&
+      typeof filterSel.maxPriceInput === 'string' &&
+      typeof filterSel.priceSearchBtn === 'string'
+    ) {
+      const [min, max] = task.cost;
+      await page
+        .fill(filterSel.minPriceInput, min > 0 ? String(min) : '', { timeout: 2000 })
+        .catch(() => undefined);
+      await page
+        .fill(filterSel.maxPriceInput, max > 0 ? String(max) : '', { timeout: 2000 })
+        .catch(() => undefined);
+      await page
+        .locator(filterSel.priceSearchBtn)
+        .first()
+        .click({ timeout: 2000 })
+        .catch(() => undefined);
+      this.logStep('ACTION', `Applied price range: ${min}~${max}`, 'filters');
+    }
+  }
+
+  private async clickFilterByLabel(page: Page, label: string): Promise<boolean> {
+    const filterSel = this.selectors.filters;
+    if (!filterSel) return false;
+
+    const selectors = [
+      filterSel.attributeLabels,
+      filterSel.ratingLabels,
+      filterSel.pricePresets,
+    ].filter((s): s is string => typeof s === 'string');
+
+    if (selectors.length > 0) {
+      const clicked = await page
+        .evaluate(
+          ({ selectors, target }) => {
+            const norm = (s: string) => s.normalize('NFC').replace(/\s+/g, ' ').trim();
+            const wanted = norm(target);
+            for (const sel of selectors) {
+              const els = document.querySelectorAll(sel);
+              for (const el of Array.from(els)) {
+                if (norm(el.textContent || '') === wanted) {
+                  (el as HTMLElement).click();
+                  return true;
+                }
+              }
+            }
+            return false;
+          },
+          { selectors, target: label },
+        )
+        .catch(() => false);
+
+      if (clicked) {
+        await page.waitForTimeout(300);
+        this.logStep('ACTION', `Applied filter: ${label}`, 'filters');
+        return true;
+      }
+    }
+
+    const componentName = filterSel.deliveryAliases?.[label];
+    if (componentName) {
+      const el = page
+        .locator(`label[data-component-name="${componentName}"]:not(.disabled)`)
+        .first();
+      if (await el.count()) {
+        await el.click({ timeout: 3000 }).catch(() => undefined);
+        await page.waitForTimeout(300);
+        this.logStep('ACTION', `Applied delivery filter: ${label}`, 'filters');
+        return true;
+      }
+    }
+
+    this.logStep('WARN', `Filter not found or disabled: "${label}"`, 'filters');
+    return false;
   }
 
   public cancel(): void {
@@ -337,6 +482,14 @@ export class AutomationEngine {
         const maxP = this.config.settings.max_pages_to_search || 3;
         const targetNormalized = Matcher.normalizeName(task.target_name);
         this.logStep('DEBUG', `Target for matching: "${targetNormalized}"`, 'run');
+
+        await this.applyFilters(page, task);
+        if (
+          (task.filters?.length ?? 0) > 0 ||
+          (task.cost && (task.cost[0] > 0 || task.cost[1] > 0))
+        ) {
+          await Humanizer.wait(800, 1200);
+        }
 
         for (let pageNum = 1; pageNum <= maxP; pageNum++) {
           if (this.cancelled) {

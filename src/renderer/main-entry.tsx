@@ -10,6 +10,7 @@ interface EngineTask {
   keyword: string;
   target_name: string;
   filters: string[];
+  cost?: [number, number];
 }
 
 function parseLogLine(msg: string): LogEntry {
@@ -39,7 +40,9 @@ function toEngineTasks(tasks: Task[]): EngineTask[] {
   return tasks.map((t) => ({
     keyword: t.keyword,
     target_name: t.product,
-    filters: [],
+    filters: t.filters ?? [],
+    cost:
+      t.minCost || t.maxCost ? ([t.minCost ?? 0, t.maxCost ?? 0] as [number, number]) : undefined,
   }));
 }
 
@@ -48,6 +51,9 @@ function fromSessionTasks(raw: EngineTask[]): Task[] {
     id: `t${i + 1}`,
     keyword: t.keyword ?? '',
     product: t.target_name ?? '',
+    filters: t.filters ?? [],
+    minCost: t.cost?.[0] || undefined,
+    maxCost: t.cost?.[1] || undefined,
     status: 'idle' as const,
   }));
 }

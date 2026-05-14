@@ -23,6 +23,9 @@ export interface Task {
   id: string;
   keyword: string;
   product: string;
+  filters?: string[];
+  minCost?: number;
+  maxCost?: number;
   status: 'idle' | 'running' | 'warn' | 'error';
 }
 
@@ -1191,15 +1194,28 @@ function NewTaskDialog({
   const { t } = useT();
   const [keyword, setKeyword] = useState(editTask?.keyword ?? '');
   const [product, setProduct] = useState(editTask?.product ?? '');
+  const [filters, setFilters] = useState(editTask?.filters?.join(', ') ?? '');
+  const [minCost, setMinCost] = useState(editTask?.minCost ? String(editTask.minCost) : '');
+  const [maxCost, setMaxCost] = useState(editTask?.maxCost ? String(editTask.maxCost) : '');
   const valid = keyword.trim() && product.trim();
 
   const submit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!valid) return;
+    const payload = {
+      keyword: keyword.trim(),
+      product: product.trim(),
+      filters: filters
+        .split(',')
+        .map((s) => s.trim())
+        .filter(Boolean),
+      minCost: minCost ? Number(minCost) : undefined,
+      maxCost: maxCost ? Number(maxCost) : undefined,
+    };
     if (editTask && onEdit) {
-      onEdit(editTask.id, { keyword: keyword.trim(), product: product.trim() });
+      onEdit(editTask.id, payload);
     } else {
-      onSubmit({ keyword: keyword.trim(), product: product.trim() });
+      onSubmit(payload);
     }
   };
 
@@ -1236,6 +1252,33 @@ function NewTaskDialog({
               onChange={(e) => setProduct(e.target.value)}
               placeholder={t('modal.productPlaceholder')}
             />
+          </Field>
+          <Field label={t('modal.filtersLabel')} hint={t('modal.filtersHint')}>
+            <Input
+              value={filters}
+              onChange={(e) => setFilters(e.target.value)}
+              placeholder={t('modal.filtersPlaceholder')}
+            />
+          </Field>
+          <Field label={t('modal.priceRangeLabel')}>
+            <div className="flex items-center gap-2">
+              <Input
+                type="number"
+                placeholder="0"
+                value={minCost}
+                onChange={(e) => setMinCost(e.target.value)}
+                className="flex-1"
+              />
+              <span className="text-zinc-600 text-[12px] shrink-0">~</span>
+              <Input
+                type="number"
+                placeholder="0"
+                value={maxCost}
+                onChange={(e) => setMaxCost(e.target.value)}
+                className="flex-1"
+              />
+              <span className="text-[11px] text-zinc-500 shrink-0">원</span>
+            </div>
           </Field>
         </div>
         <div className="px-5 py-3.5 border-t border-zinc-800/70 flex items-center justify-between bg-zinc-900/30">

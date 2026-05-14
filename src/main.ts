@@ -47,7 +47,7 @@ interface StoreSchema {
   telegram_id?: number;
   session?: string;
 }
-const store = new Store<StoreSchema>();
+const store = new Store<StoreSchema>({ name: 'auth' });
 
 // ── Icons root (dev vs packaged) ────────────────────────────
 const iconsRoot = app.isPackaged
@@ -492,9 +492,9 @@ function setupUserFiles() {
       }
     }
 
-    if (fs.existsSync(selectorsSrc) && !fs.existsSync(selectorsDest)) {
+    if (fs.existsSync(selectorsSrc)) {
       fs.copyFileSync(selectorsSrc, selectorsDest);
-      console.log('[setupUserFiles] Selectors initialized from defaults.');
+      console.log('[setupUserFiles] Selectors refreshed from bundle.');
     }
   } catch (error) {
     console.error('Critical error configuring user files:', error);
@@ -566,9 +566,16 @@ async function createWindow() {
     try {
       const { status } = await getSubscriptionStatus(telegramId);
       loadPage(status === 'expired' ? 'subscription.html' : 'index.html');
-    } catch {
-      store.delete('telegram_id');
-      loadPage('auth.html');
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      if (msg === 'User not found') {
+        // Account was removed — force re-authentication
+        store.delete('telegram_id');
+        loadPage('auth.html');
+      } else {
+        // Network/Supabase error — trust the stored session
+        loadPage('index.html');
+      }
     }
   }
 
