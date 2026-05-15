@@ -289,8 +289,13 @@ ipcMain.handle('load-session', async () => {
 });
 
 // ── Send logs to Telegram ────────────────────────────────────
-function escapeMarkdownV2(text: string) {
-  return text.replace(/([\\_*\[\]()~`>#+\-=|{}.!])/g, '\\$1');
+async function telegramErrorBody(response: Response): Promise<string> {
+  try {
+    const body = await response.text();
+    return body ? `${response.statusText}: ${body}` : response.statusText;
+  } catch {
+    return response.statusText;
+  }
 }
 
 ipcMain.handle('send-log-telegram', async () => {
@@ -310,20 +315,20 @@ ipcMain.handle('send-log-telegram', async () => {
 
     const logContent = fs.readFileSync(logPath, 'utf-8');
     const textToSend = logContent.length > 4000 ? '... ' + logContent.slice(-3900) : logContent;
-    const escapedText = escapeMarkdownV2(textToSend);
 
+    // Plain text on purpose — MarkdownV2 parse errors were rejecting reports
+    // depending on log content. Delivery > formatting for this code path.
     const url = `https://api.telegram.org/bot${bot_token}/sendMessage`;
     const response = await fetch(url, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         chat_id,
-        text: `🤖 *Coupang Bot Logs:*\n\n\`\`\`text\n${escapedText}\n\`\`\``,
-        parse_mode: 'MarkdownV2',
+        text: `🤖 Coupang Bot Logs:\n\n${textToSend}`,
       }),
     });
 
-    if (!response.ok) throw new Error('Telegram API error: ' + response.statusText);
+    if (!response.ok) throw new Error('Telegram API error: ' + (await telegramErrorBody(response)));
     return { success: true };
   } catch (error) {
     const errMessage = error instanceof Error ? error.message : String(error);
@@ -353,13 +358,13 @@ ipcMain.handle(
         logLines = all.slice(-50).join('\n');
       }
 
-      const header = `🐛 *Problem Report*\n\nUser: ${escapeMarkdownV2(userInfo)}\nType: ${escapeMarkdownV2(type)}\nDescription: ${escapeMarkdownV2(description)}\n\n*Last 50 log lines:*\n`;
-      const codeBlock = `\`\`\`\n${escapeMarkdownV2(logLines)}\n\`\`\``;
-      const maxCodeLen = 4096 - header.length - 6;
-      const safeCode =
-        codeBlock.length > maxCodeLen
-          ? `\`\`\`\n${escapeMarkdownV2('...' + logLines.slice(-(maxCodeLen - 20)))}\n\`\`\``
-          : codeBlock;
+      // Plain text — Telegram's MarkdownV2 parser rejects the request whenever
+      // the log content trips one of its many escape rules. The report channel
+      // doesn't need formatting; reliable delivery is what matters.
+      const header = `🐛 Problem Report\n\nUser: ${userInfo}\nType: ${type}\nDescription: ${description}\n\nLast 50 log lines:\n`;
+      const maxLogLen = 4096 - header.length - 16;
+      const trimmedLog =
+        logLines.length > maxLogLen ? '...' + logLines.slice(-(maxLogLen - 4)) : logLines;
 
       const url = `https://api.telegram.org/bot${bot_token}/sendMessage`;
       const response = await fetch(url, {
@@ -367,12 +372,12 @@ ipcMain.handle(
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           chat_id,
-          text: header + safeCode,
-          parse_mode: 'MarkdownV2',
+          text: header + trimmedLog,
         }),
       });
 
-      if (!response.ok) throw new Error('Telegram API error: ' + response.statusText);
+      if (!response.ok)
+        throw new Error('Telegram API error: ' + (await telegramErrorBody(response)));
       return { success: true };
     } catch (error) {
       const errMessage = error instanceof Error ? error.message : String(error);
