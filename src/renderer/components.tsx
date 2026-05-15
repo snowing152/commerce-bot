@@ -437,7 +437,6 @@ export const Wordmark = ({ size = 'md' }: WordmarkProps) => {
         xmlns="http://www.w3.org/2000/svg"
         viewBox="0 0 200 200"
         className={`${dim} rounded-md flex-shrink-0`}
-        draggable={false}
         aria-label="Coupang Bot"
       >
         <defs>

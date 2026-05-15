@@ -421,6 +421,10 @@ export function DashboardPage({
   const [scheduleConfig, setScheduleConfig] = useState<ScheduleConfig | null>(
     () => initialSchedule ?? null,
   );
+  // Keep local config in sync when the parent re-fetches after save (so nextRunAt updates).
+  useEffect(() => {
+    if (initialSchedule) setScheduleConfig(initialSchedule);
+  }, [initialSchedule]);
   const [showSchedule, setShowSchedule] = useState(false);
   const [showReport, setShowReport] = useState(false);
 
@@ -560,7 +564,13 @@ export function DashboardPage({
     if (results.length === 0) return;
     const latest = results[results.length - 1];
     setFoundTaskIds((prev) => {
-      const match = tasks.find((t) => t.keyword.toLowerCase() === latest.keyword.toLowerCase());
+      const kw = latest.keyword.toLowerCase();
+      const tn = latest.targetName?.toLowerCase() ?? '';
+      // Match by keyword + product name; fall back to keyword-only so older
+      // results without a targetName still work.
+      const match =
+        tasks.find((t) => t.keyword.toLowerCase() === kw && t.product.toLowerCase() === tn) ??
+        tasks.find((t) => t.keyword.toLowerCase() === kw);
       if (!match || prev.has(match.id)) return prev;
       const next = new Set(prev);
       next.add(match.id);
@@ -587,7 +597,7 @@ export function DashboardPage({
               {updateStatus}
             </span>
           )}
-          {updateProgress !== null && updateProgress > 0 && (
+          {updateProgress != null && updateProgress > 0 && (
             <div className="flex items-center gap-1.5">
               <div className="w-[80px] h-1 bg-zinc-800 rounded-full overflow-hidden">
                 <div
@@ -1112,7 +1122,7 @@ export function DashboardPage({
           onClose={() => setShowSchedule(false)}
           onSave={async (cfg) => {
             await onSaveSchedule?.(cfg);
-            setScheduleConfig({ ...cfg, nextRunAt: null });
+            // Parent re-fetches and updates initialSchedule, which syncs via useEffect above.
             setShowSchedule(false);
           }}
         />

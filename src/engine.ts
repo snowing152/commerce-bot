@@ -33,6 +33,7 @@ export interface FilterSelectors {
   ratingLabels: string;
   pricePresets: string;
   serviceLabels: string;
+  anyLabel?: string;
   minPriceInput: string;
   maxPriceInput: string;
   priceSearchBtn: string;
@@ -177,18 +178,29 @@ export class AutomationEngine {
         .waitForSelector(filterSel.minPriceInput, { state: 'attached', timeout: 8000 })
         .catch(() => undefined);
 
+      // Coupang's price inputs are React-controlled. Playwright's keyboard.type
+      // fires input events, but React reads the value from its own internal state
+      // — which only syncs reliably when the value is set via the native HTMLInputElement
+      // setter (the same path React's onChange uses internally). Plain `.value = x`
+      // is intercepted by React's overridden setter and ignored.
       const fillInput = async (sel: string, value: string): Promise<boolean> => {
         try {
-          const loc = page.locator(sel).first();
-          if (!(await loc.count())) return false;
-          await loc.click({ timeout: 3000 });
-          await page.keyboard.press('Control+A');
-          if (value) {
-            await page.keyboard.type(value, { delay: 50 });
-          } else {
-            await page.keyboard.press('Delete');
-          }
-          return true;
+          return await page.evaluate(
+            ({ sel, value }) => {
+              const input = document.querySelector(sel) as HTMLInputElement | null;
+              if (!input) return false;
+              const proto = window.HTMLInputElement.prototype;
+              const setter = Object.getOwnPropertyDescriptor(proto, 'value')?.set;
+              input.focus();
+              if (setter) setter.call(input, value);
+              else input.value = value;
+              input.dispatchEvent(new Event('input', { bubbles: true }));
+              input.dispatchEvent(new Event('change', { bubbles: true }));
+              input.blur();
+              return true;
+            },
+            { sel, value },
+          );
         } catch {
           return false;
         }
@@ -201,11 +213,29 @@ export class AutomationEngine {
       if (minOk || maxOk) {
         await page.waitForTimeout(200);
         const priceUrlBefore = page.url();
-        await page
-          .locator(filterSel.priceSearchBtn)
-          .first()
-          .click({ timeout: 3000 })
-          .catch(() => undefined);
+
+        // Click the 검색 label. Use a real Playwright click first (fires proper
+        // mousedown/up + click events at coords). Fall back to dispatching a
+        // bubbling MouseEvent if Playwright can't interact.
+        let clicked = false;
+        try {
+          const loc = page.locator(filterSel.priceSearchBtn).first();
+          await loc.scrollIntoViewIfNeeded({ timeout: 2000 }).catch(() => undefined);
+          await loc.click({ timeout: 3000, force: true });
+          clicked = true;
+        } catch (_) {
+          clicked = await page
+            .evaluate((sel: string) => {
+              const el = document.querySelector(sel) as HTMLElement | null;
+              if (!el) return false;
+              el.dispatchEvent(
+                new MouseEvent('click', { bubbles: true, cancelable: true, view: window }),
+              );
+              return true;
+            }, filterSel.priceSearchBtn)
+            .catch(() => false);
+        }
+
         // 검색 triggers a page reload — wait for it to settle before scraping
         await page
           .waitForFunction((prev: string) => location.href !== prev, priceUrlBefore, {
@@ -214,7 +244,11 @@ export class AutomationEngine {
           .catch(() => undefined);
         await page.waitForLoadState('domcontentloaded', { timeout: 5000 }).catch(() => undefined);
         await page.waitForTimeout(600);
-        this.logStep('ACTION', `Applied price range: ${min}~${max}`, 'filters');
+        this.logStep(
+          'ACTION',
+          `Applied price range: ${min}~${max} (button clicked: ${clicked})`,
+          'filters',
+        );
       } else {
         this.logStep('WARN', 'Price inputs not found on page — price filter skipped', 'filters');
       }
@@ -225,11 +259,14 @@ export class AutomationEngine {
     const filterSel = this.selectors.filters;
     if (!filterSel) return false;
 
+    // categoryLabels intentionally excluded: Coupang's category items are
+    // <a href> nav links — clicking one navigates away from the search results
+    // instead of filtering them.
     const selectors = [
-      filterSel.categoryLabels,
       filterSel.attributeLabels,
       filterSel.ratingLabels,
       filterSel.pricePresets,
+      filterSel.anyLabel,
     ].filter((s): s is string => typeof s === 'string');
 
     if (selectors.length > 0) {
@@ -245,18 +282,31 @@ export class AutomationEngine {
                 .trim();
             const wanted = norm(target);
             const found: string[] = [];
+            const PER_BUCKET = 8;
             for (const sel of selectors) {
               const els = document.querySelectorAll(sel);
+              let bucketCount = 0;
               for (const el of Array.from(els)) {
                 const text = norm(el.textContent || '');
-                if (text) found.push(text);
                 if (text === wanted) {
                   (el as HTMLElement).click();
                   return { clicked: true, candidates: [] };
                 }
+                // Also try matching by title attribute — rating labels render
+                // "별점전체" / "별점4점 이상" in textContent but have clean titles
+                // like "전체" / "4점 이상".
+                const title = norm(el.getAttribute('title') || '');
+                if (title && title === wanted) {
+                  (el as HTMLElement).click();
+                  return { clicked: true, candidates: [] };
+                }
+                if (text && bucketCount < PER_BUCKET) {
+                  found.push(text);
+                  bucketCount++;
+                }
               }
             }
-            return { clicked: false, candidates: found.slice(0, 20) };
+            return { clicked: false, candidates: found };
           },
           { selectors, target: label },
         )
@@ -511,7 +561,7 @@ export class AutomationEngine {
         await Humanizer.wait(150, 350);
         await inp.fill('');
         this.logStep('ACTION', `Typing keyword "${task.keyword}".`, 'run');
-        await inp.type(task.keyword, { delay: 100 + Math.random() * 80 });
+        await inp.pressSequentially(task.keyword, { delay: 100 + Math.random() * 80 });
         await Humanizer.wait(400, 900);
         if (Math.random() > 0.5) await Humanizer.wait(600, 1500);
         this.logStep('ACTION', 'Submitting search.', 'run');
