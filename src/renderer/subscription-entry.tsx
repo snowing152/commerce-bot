@@ -28,7 +28,7 @@ function SubscriptionApp() {
         : '—';
       setSubInfo({
         plan: 'Pro',
-        price: data.price ?? '₩10,000 / mo',
+        price: data.price ?? '—',
         expires,
         daysLeft: data.daysLeft ?? 0,
       });

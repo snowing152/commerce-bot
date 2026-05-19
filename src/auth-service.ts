@@ -124,7 +124,7 @@ export async function getSubscriptionStatus(telegramId: number) {
     daysLeft: data.days_left,
     trialStart: data.trial_start,
     periodEnd: data.period_end,
-    price: '₩10,000',
+    price: `₩${Number(process.env.SUBSCRIPTION_PRICE_KRW || '10000').toLocaleString('ko-KR')}`,
   };
 }
 
