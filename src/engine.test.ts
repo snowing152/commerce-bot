@@ -67,6 +67,51 @@ describe('AutomationEngine Error Handling', () => {
   });
 });
 
+// firstVisible must:
+//   1. compose `scope.locator(selector).locator('visible=true').first()`
+//      so the Playwright `visible=true` engine skips hidden duplicates.
+//   2. resolve with the locator only after waitFor({ state: 'visible' }) succeeds.
+//   3. return null (never throw) on timeout, so call-sites can pick a fallback.
+describe('AutomationEngine.firstVisible', () => {
+  const buildScopeMock = (waitForImpl: () => Promise<void>) => {
+    const candidate = { waitFor: jest.fn(waitForImpl) };
+    const visibleLocator = { first: jest.fn(() => candidate) };
+    const rootLocator = { locator: jest.fn(() => visibleLocator) };
+    const scope = { locator: jest.fn(() => rootLocator) };
+    return { scope, rootLocator, visibleLocator, candidate };
+  };
+
+  it('returns the candidate locator when waitFor resolves', async () => {
+    const engine = new AutomationEngine('/fake');
+    const { scope, rootLocator, candidate } = buildScopeMock(() => Promise.resolve());
+
+    const result = await (engine as any).firstVisible(scope, '.x', 1000);
+
+    expect(scope.locator).toHaveBeenCalledWith('.x');
+    expect(rootLocator.locator).toHaveBeenCalledWith('visible=true');
+    expect(candidate.waitFor).toHaveBeenCalledWith({ state: 'visible', timeout: 1000 });
+    expect(result).toBe(candidate);
+  });
+
+  it('returns null when waitFor rejects (timeout / no visible match)', async () => {
+    const engine = new AutomationEngine('/fake');
+    const { scope } = buildScopeMock(() => Promise.reject(new Error('Timeout 1000ms exceeded')));
+
+    const result = await (engine as any).firstVisible(scope, '.missing', 1000);
+
+    expect(result).toBeNull();
+  });
+
+  it('uses the default 5000ms timeout when none is supplied', async () => {
+    const engine = new AutomationEngine('/fake');
+    const { scope, candidate } = buildScopeMock(() => Promise.resolve());
+
+    await (engine as any).firstVisible(scope, '.x');
+
+    expect(candidate.waitFor).toHaveBeenCalledWith({ state: 'visible', timeout: 5000 });
+  });
+});
+
 // Regression: full target_name matching must not truncate to the first N words.
 // Before the fix, all three Korean product variants below shared a 4-word prefix
 // and matched the same search card even when the card was a different variant.

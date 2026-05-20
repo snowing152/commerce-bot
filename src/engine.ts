@@ -1,5 +1,5 @@
 import * as patchright from 'patchright';
-import { Page, Browser, BrowserContext } from 'patchright';
+import { Page, Browser, BrowserContext, Locator } from 'patchright';
 import { promises as fs } from 'fs';
 import * as path from 'path';
 import { Humanizer, isCDPReady, waitForCDP } from './utils';
@@ -219,7 +219,8 @@ export class AutomationEngine {
         // bubbling MouseEvent if Playwright can't interact.
         let clicked = false;
         try {
-          const loc = page.locator(filterSel.priceSearchBtn).first();
+          const loc = await this.firstVisible(page, filterSel.priceSearchBtn, 3000);
+          if (!loc) throw new Error('priceSearchBtn not visible');
           await loc.scrollIntoViewIfNeeded({ timeout: 2000 }).catch(() => undefined);
           await loc.click({ timeout: 3000, force: true });
           clicked = true;
@@ -329,10 +330,12 @@ export class AutomationEngine {
 
     const componentName = filterSel.deliveryAliases?.[label];
     if (componentName) {
-      const el = page
-        .locator(`label[data-component-name="${componentName}"]:not(.disabled)`)
-        .first();
-      if (await el.count()) {
+      const el = await this.firstVisible(
+        page,
+        `label[data-component-name="${componentName}"]:not(.disabled)`,
+        3000,
+      );
+      if (el) {
         await el.click({ timeout: 3000 }).catch(() => undefined);
         await page.waitForTimeout(300);
         this.logStep('ACTION', `Applied delivery filter: ${label}`, 'filters');
@@ -369,6 +372,24 @@ export class AutomationEngine {
       const errMessage = error instanceof Error ? error.message : String(error);
       this.logStep('ERROR', `Failed during: ${context}. Reason: ${errMessage}`, 'safeExecute');
       return fallback;
+    }
+  }
+
+  // Resolves to the first VISIBLE locator for `selector`, skipping hidden duplicates
+  // (mobile/sticky/template variants Coupang renders alongside the real element).
+  // Always re-acquire via this helper after navigation — locators bound before a
+  // page.goto stay attached to the previous frame and read as not-visible.
+  private async firstVisible(
+    scope: Page | Locator,
+    selector: string,
+    timeoutMs = 5000,
+  ): Promise<Locator | null> {
+    const candidate = scope.locator(selector).locator('visible=true').first();
+    try {
+      await candidate.waitFor({ state: 'visible', timeout: timeoutMs });
+      return candidate;
+    } catch {
+      return null;
     }
   }
 
@@ -540,13 +561,8 @@ export class AutomationEngine {
         this.logStep('INFO', `Target name: "${task.target_name}"`, 'run');
         this.logStep('INFO', `Current URL: ${page.url()}`, 'run');
 
-        const inp = page.locator(this.selectors.search_bar).first();
-        const inputVisible = await this.safeExecute(
-          inp.isVisible({ timeout: 3000 }),
-          'checking search input visibility',
-          false,
-        );
-        if (!inputVisible) {
+        let inp = await this.firstVisible(page, this.selectors.search_bar, 3000);
+        if (!inp) {
           this.logStep(
             'ACTION',
             `Search input not visible. Navigating to ${this.config.settings.base_url}.`,
@@ -554,6 +570,16 @@ export class AutomationEngine {
           );
           await page.goto(this.config.settings.base_url, { waitUntil: 'load', timeout: 60000 });
           await Humanizer.wait(2000, 3500);
+          // Re-acquire after navigation — never reuse a pre-goto locator here.
+          inp = await this.firstVisible(page, this.selectors.search_bar, 8000);
+        }
+        if (!inp) {
+          this.logStep(
+            'ERROR',
+            `Search input still not visible after navigating to ${this.config.settings.base_url}. Skipping task.`,
+            'run',
+          );
+          continue;
         }
         this.logStep('ACTION', 'Focusing search input.', 'run');
         await Humanizer.move(page, inp);
@@ -687,10 +713,16 @@ export class AutomationEngine {
               await Humanizer.wait(400, 800);
 
               this.logStep('ACTION', `PAGE ${pageNum} clicking card #${cardNumber}`, 'run');
-              const [np] = await Promise.all([
-                ctx.waitForEvent('page'),
-                card.locator('a').first().click(),
-              ]);
+              const anchor = await this.firstVisible(card, 'a', 3000);
+              if (!anchor) {
+                this.logStep(
+                  'ERROR',
+                  `PAGE ${pageNum} card #${cardNumber} has no visible anchor — skipping`,
+                  'run',
+                );
+                continue;
+              }
+              const [np] = await Promise.all([ctx.waitForEvent('page'), anchor.click()]);
               await np.waitForLoadState('load', { timeout: 30000 });
               await Humanizer.wait(1500, 2500);
 
@@ -701,13 +733,8 @@ export class AutomationEngine {
               let cartOk = false;
               const cartSelectors = [this.selectors.add_to_cart_btn, 'button.prod-cart-btn'];
               for (const sel of cartSelectors) {
-                const btn = np.locator(sel).first();
-                const isVisible = await this.safeExecute(
-                  btn.isVisible({ timeout: 3000 }),
-                  'checking add-to-cart button visibility',
-                  false,
-                );
-                if (isVisible) {
+                const btn = await this.firstVisible(np, sel, 3000);
+                if (btn) {
                   await Humanizer.move(np, btn);
                   await Humanizer.wait(400, 900);
                   try {
@@ -754,13 +781,8 @@ export class AutomationEngine {
           let nextOk = false;
           const nextSelectors = ['a.btn-next', '.pagination-next', 'a[aria-label="다음"]'];
           for (const sel of nextSelectors) {
-            const next = page.locator(sel).first();
-            const isVisible = await this.safeExecute(
-              next.isVisible({ timeout: 2000 }),
-              'checking pagination next button visibility',
-              false,
-            );
-            if (isVisible) {
+            const next = await this.firstVisible(page, sel, 2000);
+            if (next) {
               await Humanizer.move(page, next);
               try {
                 this.logStep('ACTION', `PAGE ${pageNum} clicking next page`, 'run');
@@ -832,8 +854,8 @@ export class AutomationEngine {
 
       let shotDone = false;
       for (const sel of cartContainerSelectors) {
-        const container = page.locator(sel).first();
-        if (await container.isVisible({ timeout: 5000 }).catch(() => false)) {
+        const container = await this.firstVisible(page, sel, 5000);
+        if (container) {
           this.logStep('ACTION', 'Capturing cart items area.', 'run');
           await container.screenshot({ path: screenshotPath });
           shotDone = true;
