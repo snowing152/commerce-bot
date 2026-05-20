@@ -19,13 +19,12 @@ function getSupabase() {
 export async function startTelegramAuth(): Promise<string> {
   const token = crypto.randomBytes(16).toString('hex');
 
-  await getSupabase()
-    .from('auth_tokens')
-    .insert({
-      token,
-      confirmed: false,
-      expires_at: new Date(Date.now() + 5 * 60_000).toISOString(),
-    });
+  // expires_at is filled by the Postgres column default (now() + 5 minutes).
+  // Do NOT compute it client-side — the user's local clock can be skewed.
+  await getSupabase().from('auth_tokens').insert({
+    token,
+    confirmed: false,
+  });
 
   shell.openExternal(`https://t.me/${process.env.BOT_USERNAME}?start=login_${token}`);
   return token;
