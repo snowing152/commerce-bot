@@ -1,6 +1,6 @@
 {
   "name": "coupang-bot",
-  "version": "2.0.5",
+  "version": "2.0.6",
   "main": "out/main/index.js",
   "scripts": {
     "clean": "node -e \"const fs = require('fs'); fs.rmSync('out', { recursive: true, force: true }); fs.rmSync('release', { recursive: true, force: true });\"",
