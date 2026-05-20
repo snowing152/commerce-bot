@@ -70,6 +70,7 @@ function DashboardApp() {
   } | null>(null);
   const [user, setUser] = useState<{ first_name: string; photo_url: string | null } | null>(null);
   const [results, setResults] = useState<BotResult[]>([]);
+  const [liveResults, setLiveResults] = useState<BotResult[]>([]);
   const [screenshotPath, setScreenshotPath] = useState<string | null>(null);
   const [updateProgress, setUpdateProgress] = useState<number | null>(null);
   const [scheduleConfig, setScheduleConfig] = useState<ScheduleConfig | null>(null);
@@ -117,9 +118,10 @@ function DashboardApp() {
       if (p.message) setUpdateStatus({ key: 'update.errorPrefix', params: { message: p.message } });
       setUpdateProgress(null);
     });
-    const unResult = window.api.onBotResult((d) =>
-      setResults((prev) => [...prev.slice(-499), d as BotResult]),
-    );
+    const unResult = window.api.onBotResult((d) => {
+      setResults((prev) => [...prev.slice(-499), d as BotResult]);
+      setLiveResults((prev) => [...prev, d as BotResult]);
+    });
     const unProgress = window.api.onUpdateProgress((pct) => setUpdateProgress(pct));
     return () => {
       unLog();
@@ -133,6 +135,7 @@ function DashboardApp() {
 
   const handleStartBot = (tasks: Task[]) => {
     setScreenshotPath(null);
+    setLiveResults([]);
     window.api.saveSession(toEngineTasks(tasks));
     window.api.startBot(toEngineTasks(tasks));
   };
@@ -202,6 +205,7 @@ function DashboardApp() {
       updateStatus={updateStatus ? t(updateStatus.key, updateStatus.params) : ''}
       user={user}
       results={results}
+      liveResults={liveResults}
       screenshotPath={screenshotPath}
       updateProgress={updateProgress}
       onReportProblem={(payload) => window.api.sendProblemReport(payload)}

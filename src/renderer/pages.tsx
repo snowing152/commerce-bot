@@ -342,6 +342,7 @@ export interface DashboardPageProps {
   updateStatus?: string;
   user?: { first_name: string; photo_url: string | null } | null;
   results?: BotResult[];
+  liveResults?: BotResult[];
   screenshotPath?: string | null;
   updateProgress?: number | null;
   onReportProblem?: (payload: {
@@ -387,6 +388,7 @@ export function DashboardPage({
   updateStatus,
   user,
   results = [],
+  liveResults = [],
   screenshotPath,
   updateProgress,
   onReportProblem,
@@ -414,7 +416,18 @@ export function DashboardPage({
   } | null>(null);
   const [rightTab, setRightTab] = useState<'log' | 'results'>('log');
   const [unreadResults, setUnreadResults] = useState(0);
-  const [foundTaskIds, setFoundTaskIds] = useState<Set<string>>(new Set());
+  const foundTaskIds = useMemo<Set<string>>(() => {
+    const ids = new Set<string>();
+    for (const r of liveResults) {
+      const kw = r.keyword.toLowerCase();
+      const tn = r.targetName?.toLowerCase() ?? '';
+      const match =
+        tasks.find((t) => t.keyword.toLowerCase() === kw && t.product.toLowerCase() === tn) ??
+        tasks.find((t) => t.keyword.toLowerCase() === kw);
+      if (match) ids.add(match.id);
+    }
+    return ids;
+  }, [liveResults, tasks]);
   const [confirmClear, setConfirmClear] = useState(false);
   const [statsOpen, setStatsOpen] = useState(false);
   const logScrollRef = useRef<HTMLDivElement>(null);
@@ -559,24 +572,6 @@ export function DashboardPage({
     },
     [onTasksChanged],
   );
-
-  useEffect(() => {
-    if (results.length === 0) return;
-    const latest = results[results.length - 1];
-    setFoundTaskIds((prev) => {
-      const kw = latest.keyword.toLowerCase();
-      const tn = latest.targetName?.toLowerCase() ?? '';
-      // Match by keyword + product name; fall back to keyword-only so older
-      // results without a targetName still work.
-      const match =
-        tasks.find((t) => t.keyword.toLowerCase() === kw && t.product.toLowerCase() === tn) ??
-        tasks.find((t) => t.keyword.toLowerCase() === kw);
-      if (!match || prev.has(match.id)) return prev;
-      const next = new Set(prev);
-      next.add(match.id);
-      return next;
-    });
-  }, [results.length]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     if (results.length === 0) return;
