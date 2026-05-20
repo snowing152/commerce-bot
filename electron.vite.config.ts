@@ -10,11 +10,12 @@ export default defineConfig({
   main: {
     plugins: [externalizeDepsPlugin()],
     define: {
-      'process.env.SUPABASE_URL':         JSON.stringify(process.env.SUPABASE_URL         ?? ''),
-      'process.env.SUPABASE_ANON_KEY':    JSON.stringify(process.env.SUPABASE_ANON_KEY    ?? ''),
-      'process.env.BOT_USERNAME':         JSON.stringify(process.env.BOT_USERNAME         ?? ''),
-      'process.env.TELEGRAM_BOT_TOKEN':   JSON.stringify(process.env.TELEGRAM_BOT_TOKEN   ?? ''),
-      'process.env.TELEGRAM_LOG_CHAT_ID': JSON.stringify(process.env.TELEGRAM_LOG_CHAT_ID ?? ''),
+      'process.env.SUPABASE_URL':              JSON.stringify(process.env.SUPABASE_URL              ?? ''),
+      'process.env.SUPABASE_ANON_KEY':         JSON.stringify(process.env.SUPABASE_ANON_KEY         ?? ''),
+      'process.env.BOT_USERNAME':              JSON.stringify(process.env.BOT_USERNAME              ?? ''),
+      'process.env.TELEGRAM_BOT_TOKEN':        JSON.stringify(process.env.TELEGRAM_BOT_TOKEN        ?? ''),
+      'process.env.TELEGRAM_LOG_CHAT_ID':      JSON.stringify(process.env.TELEGRAM_LOG_CHAT_ID      ?? ''),
+      'process.env.SUBSCRIPTION_PRICE_KRW':    JSON.stringify(process.env.SUBSCRIPTION_PRICE_KRW    ?? ''),
     },
     build: {
       rollupOptions: {

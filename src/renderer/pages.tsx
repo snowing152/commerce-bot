@@ -342,6 +342,7 @@ export interface DashboardPageProps {
   updateStatus?: string;
   user?: { first_name: string; photo_url: string | null } | null;
   results?: BotResult[];
+  liveResults?: BotResult[];
   screenshotPath?: string | null;
   updateProgress?: number | null;
   onReportProblem?: (payload: {
@@ -387,6 +388,7 @@ export function DashboardPage({
   updateStatus,
   user,
   results = [],
+  liveResults = [],
   screenshotPath,
   updateProgress,
   onReportProblem,
@@ -414,13 +416,28 @@ export function DashboardPage({
   } | null>(null);
   const [rightTab, setRightTab] = useState<'log' | 'results'>('log');
   const [unreadResults, setUnreadResults] = useState(0);
-  const [foundTaskIds, setFoundTaskIds] = useState<Set<string>>(new Set());
+  const foundTaskIds = useMemo<Set<string>>(() => {
+    const ids = new Set<string>();
+    for (const r of liveResults) {
+      const kw = r.keyword.toLowerCase();
+      const tn = r.targetName?.toLowerCase() ?? '';
+      const match =
+        tasks.find((t) => t.keyword.toLowerCase() === kw && t.product.toLowerCase() === tn) ??
+        tasks.find((t) => t.keyword.toLowerCase() === kw);
+      if (match) ids.add(match.id);
+    }
+    return ids;
+  }, [liveResults, tasks]);
   const [confirmClear, setConfirmClear] = useState(false);
   const [statsOpen, setStatsOpen] = useState(false);
   const logScrollRef = useRef<HTMLDivElement>(null);
   const [scheduleConfig, setScheduleConfig] = useState<ScheduleConfig | null>(
     () => initialSchedule ?? null,
   );
+  // Keep local config in sync when the parent re-fetches after save (so nextRunAt updates).
+  useEffect(() => {
+    if (initialSchedule) setScheduleConfig(initialSchedule);
+  }, [initialSchedule]);
   const [showSchedule, setShowSchedule] = useState(false);
   const [showReport, setShowReport] = useState(false);
 
@@ -558,18 +575,6 @@ export function DashboardPage({
 
   useEffect(() => {
     if (results.length === 0) return;
-    const latest = results[results.length - 1];
-    setFoundTaskIds((prev) => {
-      const match = tasks.find((t) => t.keyword.toLowerCase() === latest.keyword.toLowerCase());
-      if (!match || prev.has(match.id)) return prev;
-      const next = new Set(prev);
-      next.add(match.id);
-      return next;
-    });
-  }, [results.length]); // eslint-disable-line react-hooks/exhaustive-deps
-
-  useEffect(() => {
-    if (results.length === 0) return;
     if (rightTab !== 'results') setUnreadResults((prev) => prev + 1);
   }, [results.length]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -587,7 +592,7 @@ export function DashboardPage({
               {updateStatus}
             </span>
           )}
-          {updateProgress !== null && updateProgress > 0 && (
+          {updateProgress != null && updateProgress > 0 && (
             <div className="flex items-center gap-1.5">
               <div className="w-[80px] h-1 bg-zinc-800 rounded-full overflow-hidden">
                 <div
@@ -1112,7 +1117,7 @@ export function DashboardPage({
           onClose={() => setShowSchedule(false)}
           onSave={async (cfg) => {
             await onSaveSchedule?.(cfg);
-            setScheduleConfig({ ...cfg, nextRunAt: null });
+            // Parent re-fetches and updates initialSchedule, which syncs via useEffect above.
             setShowSchedule(false);
           }}
         />

@@ -11,11 +11,12 @@
     "ratingLabels": "li.filter-function-bar-rating label",
     "pricePresets": "li label.filter-function-bar-price-item",
     "serviceLabels": "li.filter-function-bar-service label:not(.disabled)",
+    "anyLabel": ".filter-function-bar li label:not(.disabled)",
     "selectedClass": "selected",
     "disabledClass": "disabled",
     "minPriceInput": "input[title='minPrice']",
     "maxPriceInput": "input[title='maxPrice']",
-    "priceSearchBtn": "label[title='priceFilter']",
+    "priceSearchBtn": ".filter-function-bar-price label[title='priceFilter']",
     "deliveryAliases": {
       "로켓배송": "deliveryFilterOption-rocket_luxury,rocket,coupang_global",
       "로켓": "deliveryFilterOption-rocket_luxury,rocket,coupang_global",
