@@ -414,7 +414,7 @@ export function DashboardPage({
     taskId: string;
     confirming: boolean;
   } | null>(null);
-  const [rightTab, setRightTab] = useState<'log' | 'results'>('log');
+  const [rightTab, setRightTab] = useState<'log' | 'results' | 'progress'>('log');
   const [unreadResults, setUnreadResults] = useState(0);
   const foundTaskIds = useMemo<Set<string>>(() => {
     const ids = new Set<string>();
@@ -429,7 +429,6 @@ export function DashboardPage({
     return ids;
   }, [liveResults, tasks]);
   const [confirmClear, setConfirmClear] = useState(false);
-  const [statsOpen, setStatsOpen] = useState(false);
   const logScrollRef = useRef<HTMLDivElement>(null);
   const [scheduleConfig, setScheduleConfig] = useState<ScheduleConfig | null>(
     () => initialSchedule ?? null,
@@ -753,6 +752,22 @@ export function DashboardPage({
                     )}
                 </button>
               ))}
+              <button
+                onClick={() => setRightTab('progress')}
+                className={`h-7 px-3 text-[12px] font-medium rounded-md transition-colors flex items-center gap-1.5 ${
+                  rightTab === 'progress'
+                    ? 'bg-zinc-800 text-zinc-100'
+                    : 'text-zinc-500 hover:text-zinc-300 hover:bg-zinc-800/50'
+                }`}
+              >
+                <Icon name="activity" className="w-3 h-3" />
+                {t('panel.progress')}
+                {rankingStats.length > 0 && (
+                  <span className="text-[10.5px] bg-zinc-700 text-zinc-300 rounded px-1 tabular-nums">
+                    {rankingStats.length}
+                  </span>
+                )}
+              </button>
             </div>
             {rightTab === 'log' && (
               <div className="flex items-center gap-1">
@@ -846,109 +861,6 @@ export function DashboardPage({
           {/* Results view */}
           {rightTab === 'results' && (
             <div className="flex-1 overflow-y-auto">
-              {rankingStats.length > 0 && (
-                <div className="border-b border-zinc-800/70">
-                  <button
-                    onClick={() => setStatsOpen((v) => !v)}
-                    className="w-full flex items-center justify-between px-4 h-9 hover:bg-zinc-900/40 transition-colors"
-                  >
-                    <div className="flex items-center gap-2">
-                      <Icon name="activity" className="w-3.5 h-3.5 text-zinc-400" />
-                      <span className="text-[11px] font-semibold tracking-[0.06em] text-zinc-300 uppercase">
-                        Promotion Progress
-                      </span>
-                      <span className="inline-flex items-center justify-center h-4 min-w-[16px] px-1 rounded-sm bg-zinc-700 text-zinc-300 text-[10px] font-semibold tabular-nums">
-                        {rankingStats.length}
-                      </span>
-                    </div>
-                    <Icon
-                      name="chevronRight"
-                      className={`w-3.5 h-3.5 text-zinc-500 transition-transform ${statsOpen ? 'rotate-90' : ''}`}
-                    />
-                  </button>
-                  {statsOpen && (
-                    <div className="px-3 pb-3 pt-1 flex flex-wrap gap-2">
-                      {rankingStats.map((s) => {
-                        const improved =
-                          s.pageImprovement > 0 ||
-                          (s.pageImprovement === 0 && s.posImprovement > 0);
-                        const worsened =
-                          s.pageImprovement < 0 ||
-                          (s.pageImprovement === 0 && s.posImprovement < 0);
-                        const arrow = improved ? '↑' : worsened ? '↓' : '→';
-                        const arrowColor = improved
-                          ? 'text-emerald-400'
-                          : worsened
-                            ? 'text-red-400'
-                            : 'text-zinc-500';
-                        const chips = s.history.slice(-8);
-                        const ref = chips[0];
-                        return (
-                          <div
-                            key={`${s.keyword}|||${s.targetName}`}
-                            className="flex-shrink-0 w-[220px] rounded-md border border-zinc-800/80 bg-zinc-900/50 px-3 py-2.5 space-y-1.5"
-                          >
-                            <div>
-                              <p className="text-[12px] font-medium text-zinc-100 truncate leading-tight">
-                                {s.targetName}
-                              </p>
-                              <p className="text-[10.5px] text-zinc-500 truncate mt-px">
-                                {s.keyword}
-                              </p>
-                            </div>
-                            <div className="flex items-center gap-1.5">
-                              <span className="text-[11px] font-mono text-zinc-400 tabular-nums">
-                                P{s.first.page}·{s.first.pos}
-                              </span>
-                              <span className="text-[11px] text-zinc-600">→</span>
-                              <span className="text-[11px] font-mono font-semibold text-zinc-100 tabular-nums">
-                                P{s.latest.page}·{s.latest.pos}
-                              </span>
-                              <span
-                                className={`text-[13px] font-bold leading-none ml-auto ${arrowColor}`}
-                              >
-                                {arrow}
-                              </span>
-                            </div>
-                            <div className="flex items-center gap-0.5 flex-wrap">
-                              {chips.map((pt, i) => {
-                                const isFirst = i === 0;
-                                const chipImproved =
-                                  !isFirst &&
-                                  (pt.page < ref.page ||
-                                    (pt.page === ref.page && pt.pos < ref.pos));
-                                const chipWorsened =
-                                  !isFirst &&
-                                  (pt.page > ref.page ||
-                                    (pt.page === ref.page && pt.pos > ref.pos));
-                                const chipCls = isFirst
-                                  ? 'bg-zinc-700 text-zinc-300'
-                                  : chipImproved
-                                    ? 'bg-emerald-500/15 text-emerald-300 border border-emerald-500/20'
-                                    : chipWorsened
-                                      ? 'bg-red-500/10 text-red-300 border border-red-500/15'
-                                      : 'bg-zinc-800 text-zinc-400';
-                                return (
-                                  <span
-                                    key={i}
-                                    className={`inline-flex items-center justify-center h-4 px-1 rounded text-[9px] font-mono tabular-nums font-medium ${chipCls}`}
-                                    title={`Page ${pt.page} Position ${pt.pos}`}
-                                  >
-                                    {pt.page}·{pt.pos}
-                                  </span>
-                                );
-                              })}
-                            </div>
-                            <p className="text-[10px] text-zinc-600 tabular-nums">
-                              {s.runCount} runs
-                            </p>
-                          </div>
-                        );
-                      })}
-                    </div>
-                  )}
-                </div>
-              )}
               {results.length === 0 ? (
                 <div className="px-4 py-10 text-center">
                   <Icon name="target" className="w-5 h-5 text-zinc-700 mx-auto mb-2" />
@@ -1021,6 +933,13 @@ export function DashboardPage({
                   </tbody>
                 </table>
               )}
+            </div>
+          )}
+
+          {/* Progress view */}
+          {rightTab === 'progress' && (
+            <div className="flex-1 overflow-y-auto">
+              <PromotionProgressTab stats={rankingStats} />
             </div>
           )}
         </section>
@@ -1453,6 +1372,372 @@ function formatTimeUntil(isoString: string): string {
   const h = Math.floor(totalMin / 60);
   const m = totalMin % 60;
   return h > 0 ? `${h}h ${m}m` : `${m}m`;
+}
+
+/* ============================================================ */
+/*  PROMOTION PROGRESS TAB                                       */
+/* ============================================================ */
+
+function PromotionDetailPanel({ stat, onClose }: { stat: RankingStat; onClose: () => void }) {
+  const history = stat.history;
+  const minPos = Math.min(...history.map((p) => p.pos));
+  const maxPos = Math.max(...history.map((p) => p.pos));
+  const posRange = maxPos - minPos || 1;
+  const isUp = stat.pageImprovement > 0 || (stat.pageImprovement === 0 && stat.posImprovement > 0);
+  const color = isUp
+    ? '#34d399'
+    : stat.posImprovement < 0 || stat.pageImprovement < 0
+      ? '#f87171'
+      : '#71717a';
+
+  const W = Math.max(400, history.length * 28);
+  const H = 160;
+  const pL = 38,
+    pR = 12,
+    pT = 20,
+    pB = 30;
+  const cW = W - pL - pR;
+  const cH = H - pT - pB;
+
+  const px = (i: number) => pL + (i / Math.max(history.length - 1, 1)) * cW;
+  // invert: lower position = higher on chart (better)
+  const py = (pos: number) => pT + ((pos - minPos) / posRange) * cH;
+
+  const yTicks: Array<{ v: number; y: number }> = [];
+  for (let i = 0; i <= 4; i++) {
+    const v = minPos + Math.round((posRange / 4) * i);
+    yTicks.push({ v, y: py(v) });
+  }
+  const bestIdx = history.reduce(
+    (bi, p, i) =>
+      p.page < history[bi].page || (p.page === history[bi].page && p.pos < history[bi].pos)
+        ? i
+        : bi,
+    0,
+  );
+  const chartPoints = history.map((p, i) => ({ x: px(i), y: py(p.pos) }));
+  const linePts = chartPoints.map((p) => `${p.x},${p.y}`).join(' ');
+  const areaD =
+    `M${px(0)},${py(history[0].pos)} ` +
+    history
+      .slice(1)
+      .map((p, i) => `L${px(i + 1)},${py(p.pos)}`)
+      .join(' ') +
+    ` L${px(history.length - 1)},${pT + cH} L${px(0)},${pT + cH} Z`;
+
+  const netChange = stat.pageImprovement !== 0 ? stat.pageImprovement : stat.posImprovement;
+  const changeSign = netChange > 0 ? '+' : '';
+
+  return (
+    <div className="mx-3 mb-2 rounded-lg border border-zinc-800 bg-zinc-950/80 p-4 animate-[fadeIn_0.15s_ease]">
+      {/* header */}
+      <div className="flex justify-between items-start mb-3">
+        <div>
+          <p className="text-[13px] font-semibold text-zinc-100 leading-snug">{stat.targetName}</p>
+          <p className="text-[11px] text-zinc-500 mt-0.5">
+            {stat.keyword} · {stat.runCount} runs
+          </p>
+        </div>
+        <button
+          onClick={onClose}
+          className="w-6 h-6 rounded-md bg-zinc-800/60 border border-zinc-700/60 text-zinc-500 hover:text-zinc-200 hover:bg-zinc-700 transition-colors flex items-center justify-center text-[13px] flex-shrink-0 ml-3"
+        >
+          ✕
+        </button>
+      </div>
+
+      {/* stat blocks */}
+      <div className="grid grid-cols-4 gap-2 mb-4">
+        {[
+          { val: `#${stat.latest.pos}`, lbl: 'Текущая', color: '' },
+          { val: `#${minPos}`, lbl: 'Лучшая', color: 'text-emerald-400' },
+          {
+            val: `${changeSign}${netChange}`,
+            lbl: 'Изменение',
+            color:
+              netChange > 0 ? 'text-emerald-400' : netChange < 0 ? 'text-red-400' : 'text-zinc-500',
+          },
+          { val: `#${stat.first.pos}`, lbl: 'Начальная', color: '' },
+        ].map(({ val, lbl, color: c }) => (
+          <div
+            key={lbl}
+            className="rounded-md border border-zinc-800 bg-zinc-900/40 px-2 py-2 text-center"
+          >
+            <div
+              className={`text-[18px] font-bold leading-none tabular-nums ${c || 'text-zinc-100'}`}
+            >
+              {val}
+            </div>
+            <div className="text-[9px] text-zinc-500 mt-1.5 uppercase tracking-wide">{lbl}</div>
+          </div>
+        ))}
+      </div>
+
+      {/* chart */}
+      <div className="rounded-md border border-zinc-800 bg-zinc-950/60 p-3">
+        <p className="text-[10px] text-zinc-600 font-semibold uppercase tracking-widest mb-2 px-1">
+          Позиция по запускам
+        </p>
+        <div className="overflow-x-auto">
+          <svg width={W} height={H} viewBox={`0 0 ${W} ${H}`} style={{ display: 'block' }}>
+            <defs>
+              <linearGradient id="ppGrad" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0%" stopColor={color} stopOpacity="0.15" />
+                <stop offset="100%" stopColor={color} stopOpacity="0" />
+              </linearGradient>
+            </defs>
+
+            {/* grid lines + y labels */}
+            {yTicks.map(({ v, y }) => (
+              <g key={v}>
+                <line x1={pL} x2={pL + cW} y1={y} y2={y} stroke="#1c1c1f" strokeWidth="1" />
+                <text
+                  x={pL - 5}
+                  y={y + 3.5}
+                  fill="#52525b"
+                  fontSize="8.5"
+                  textAnchor="end"
+                  fontFamily="system-ui,sans-serif"
+                >
+                  #{v}
+                </text>
+              </g>
+            ))}
+
+            {/* axes */}
+            <line x1={pL} x2={pL} y1={pT} y2={pT + cH} stroke="#27272a" strokeWidth="1" />
+            <line x1={pL} x2={pL + cW} y1={pT + cH} y2={pT + cH} stroke="#27272a" strokeWidth="1" />
+
+            {/* area */}
+            <path d={areaD} fill="url(#ppGrad)" />
+
+            {/* line */}
+            <polyline
+              points={linePts}
+              fill="none"
+              stroke={color}
+              strokeWidth="1.5"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            />
+
+            {/* dots */}
+            {chartPoints.map((p, i) => (
+              <circle
+                key={i}
+                cx={p.x}
+                cy={p.y}
+                r="2.5"
+                fill="#09090b"
+                stroke={color}
+                strokeWidth="1.5"
+              />
+            ))}
+
+            {/* best marker */}
+            <circle
+              cx={chartPoints[bestIdx].x}
+              cy={chartPoints[bestIdx].y}
+              r="6"
+              fill={color}
+              fillOpacity="0.12"
+            />
+            <circle cx={chartPoints[bestIdx].x} cy={chartPoints[bestIdx].y} r="3.5" fill={color} />
+            <text
+              x={chartPoints[bestIdx].x}
+              y={chartPoints[bestIdx].y - 11}
+              fill={color}
+              fontSize="8.5"
+              textAnchor="middle"
+              fontWeight="600"
+              fontFamily="system-ui,sans-serif"
+            >
+              лучшее #{minPos}
+            </text>
+
+            {/* x-axis run labels */}
+            {history.map((_, i) => (
+              <text
+                key={i}
+                x={px(i)}
+                y={pT + cH + 18}
+                fill="#52525b"
+                fontSize="8.5"
+                textAnchor="middle"
+                fontFamily="system-ui,sans-serif"
+              >
+                {i + 1}
+              </text>
+            ))}
+          </svg>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function PromotionProgressTab({ stats }: { stats: RankingStat[] }) {
+  const [activeKey, setActiveKey] = useState<string | null>(null);
+
+  const improving = stats.filter(
+    (s) => s.pageImprovement > 0 || (s.pageImprovement === 0 && s.posImprovement > 0),
+  );
+  const declining = stats.filter(
+    (s) => s.pageImprovement < 0 || (s.pageImprovement === 0 && s.posImprovement < 0),
+  );
+  const stable = stats.filter((s) => s.pageImprovement === 0 && s.posImprovement === 0);
+
+  const toggle = (key: string) => setActiveKey((k) => (k === key ? null : key));
+
+  if (stats.length === 0) {
+    return (
+      <div className="px-4 py-10 text-center">
+        <Icon name="activity" className="w-5 h-5 text-zinc-700 mx-auto mb-2" />
+        <p className="text-[12px] text-zinc-500">
+          Нет данных — запусти бота чтобы отслеживать позиции
+        </p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="p-3 space-y-1">
+      {/* summary pills */}
+      <div className="flex items-center gap-2 px-1 pb-2 pt-1 flex-wrap">
+        <span className="inline-flex items-center gap-1.5 h-6 px-3 rounded text-[11.5px] font-medium bg-zinc-800/40 border border-zinc-700/60 text-zinc-400">
+          <span className="w-1.5 h-1.5 rounded-full bg-zinc-500 inline-block" />
+          {stats.length} товаров
+        </span>
+        {improving.length > 0 && (
+          <span className="inline-flex items-center gap-1.5 h-6 px-3 rounded text-[11.5px] font-medium bg-emerald-500/[0.06] border border-emerald-500/20 text-emerald-300">
+            <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 inline-block" />
+            {improving.length} растут
+          </span>
+        )}
+        {declining.length > 0 && (
+          <span className="inline-flex items-center gap-1.5 h-6 px-3 rounded text-[11.5px] font-medium bg-red-500/[0.06] border border-red-500/20 text-red-300">
+            <span className="w-1.5 h-1.5 rounded-full bg-red-400 inline-block" />
+            {declining.length} падают
+          </span>
+        )}
+      </div>
+
+      {/* sections */}
+      {[
+        { label: '↑ Растут', items: improving, accent: '#34d399', labelCls: 'text-emerald-400' },
+        { label: '→ Стабильно', items: stable, accent: '#71717a', labelCls: 'text-zinc-500' },
+        { label: '↓ Падают', items: declining, accent: '#f87171', labelCls: 'text-red-400' },
+      ].map(({ label, items, accent, labelCls }) => {
+        if (items.length === 0) return null;
+        return (
+          <div key={label}>
+            <p
+              className={`text-[10px] font-semibold uppercase tracking-[0.08em] px-1 py-1.5 ${labelCls}`}
+            >
+              {label}
+            </p>
+            <div className="space-y-1">
+              {items.map((s) => {
+                const key = `${s.keyword}|||${s.targetName}`;
+                const isActive = activeKey === key;
+                const netChange = s.pageImprovement !== 0 ? s.pageImprovement : s.posImprovement;
+                const changeSign = netChange > 0 ? '+' : '';
+                const minPos = Math.min(...s.history.map((p) => p.pos));
+                const maxPos = Math.max(...s.history.map((p) => p.pos));
+                const sparkRange = maxPos - minPos || 1;
+                const sparkPts = s.history
+                  .map((p, i) => {
+                    const sx = 3 + (i / Math.max(s.history.length - 1, 1)) * 74;
+                    const sy = 3 + ((p.pos - minPos) / sparkRange) * 20;
+                    return `${sx},${sy}`;
+                  })
+                  .join(' ');
+
+                return (
+                  <div key={key}>
+                    <button
+                      onClick={() => toggle(key)}
+                      className={`w-full text-left flex items-center gap-2.5 rounded-md border px-3 py-2 transition-colors ${
+                        isActive
+                          ? 'bg-zinc-800/50 border-zinc-600'
+                          : 'bg-zinc-900/40 border-zinc-800/80 hover:bg-zinc-800/30 hover:border-zinc-700'
+                      }`}
+                      style={{ borderLeftWidth: '2px', borderLeftColor: accent }}
+                    >
+                      {/* change badge */}
+                      <div
+                        className="w-10 h-10 rounded-md flex flex-col items-center justify-center font-bold leading-none flex-shrink-0 text-[12px]"
+                        style={{
+                          background: `${accent}14`,
+                          color: accent,
+                          border: `1px solid ${accent}26`,
+                        }}
+                      >
+                        <span>
+                          {changeSign}
+                          {netChange}
+                        </span>
+                        <span style={{ fontSize: 9, marginTop: 2, opacity: 0.8 }}>
+                          {netChange > 0 ? '↑' : netChange < 0 ? '↓' : '→'}
+                        </span>
+                      </div>
+
+                      {/* name + keyword */}
+                      <div className="flex-1 min-w-0">
+                        <p className="text-[12.5px] font-medium text-zinc-100 leading-snug">
+                          {s.targetName}
+                        </p>
+                        <p className="text-[10.5px] text-zinc-500 mt-0.5">
+                          {s.keyword} · {s.runCount} runs
+                        </p>
+                      </div>
+
+                      {/* sparkline */}
+                      <svg width="80" height="26" viewBox="0 0 80 26" className="flex-shrink-0">
+                        <polyline
+                          points={sparkPts}
+                          fill="none"
+                          stroke={accent}
+                          strokeWidth="1.5"
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                        />
+                        <circle
+                          cx={3 + ((s.history.length - 1) / Math.max(s.history.length - 1, 1)) * 74}
+                          cy={
+                            3 + ((s.history[s.history.length - 1].pos - minPos) / sparkRange) * 20
+                          }
+                          r="2"
+                          fill={accent}
+                        />
+                      </svg>
+
+                      {/* rank */}
+                      <div className="text-right flex-shrink-0 w-14">
+                        <div
+                          className="text-[20px] font-bold leading-none tabular-nums"
+                          style={{ color: isActive ? accent : undefined }}
+                        >
+                          #{s.latest.pos}
+                        </div>
+                        <div className="text-[9px] text-zinc-600 mt-0.5">
+                          on page {s.latest.page}
+                        </div>
+                      </div>
+                    </button>
+
+                    {isActive && (
+                      <PromotionDetailPanel stat={s} onClose={() => setActiveKey(null)} />
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
 }
 
 function ScheduleModal({

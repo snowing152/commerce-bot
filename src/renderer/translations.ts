@@ -78,6 +78,7 @@ const en: Dict = {
   // Dashboard right panel
   'panel.log': 'Live Log',
   'panel.results': 'Results',
+  'panel.progress': 'Progress',
   'panel.sendTg': 'TG',
   'panel.clear': 'Clear',
   'panel.exportCsv': 'Export CSV',
@@ -226,6 +227,7 @@ const ru: Dict = {
   // Dashboard right panel
   'panel.log': 'Лог',
   'panel.results': 'Результаты',
+  'panel.progress': 'Прогресс',
   'panel.sendTg': 'TG',
   'panel.clear': 'Очистить',
   'panel.exportCsv': 'Экспорт CSV',
