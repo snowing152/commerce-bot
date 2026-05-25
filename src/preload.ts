@@ -16,6 +16,12 @@ contextBridge.exposeInMainWorld('api', {
     return () => ipcRenderer.removeListener('bot-done', handler);
   },
 
+  onRunning: (callback: () => void) => {
+    const handler = () => callback();
+    ipcRenderer.on('bot-running', handler);
+    return () => ipcRenderer.removeListener('bot-running', handler);
+  },
+
   onBotResult: (callback: (data: any) => void) => {
     const handler = (_e: IpcRendererEvent, data: any) => callback(data);
     ipcRenderer.on('bot-result', handler);
