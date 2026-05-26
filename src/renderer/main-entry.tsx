@@ -123,6 +123,7 @@ function DashboardApp() {
       setLiveResults((prev) => [...prev, d as BotResult]);
     });
     const unProgress = window.api.onUpdateProgress((pct) => setUpdateProgress(pct));
+    const unSchedule = window.api.onScheduleUpdated((s: ScheduleConfig) => setScheduleConfig(s));
     return () => {
       unLog();
       unDone();
@@ -130,6 +131,7 @@ function DashboardApp() {
       unError();
       unResult();
       unProgress();
+      unSchedule();
     };
   }, []);
 
