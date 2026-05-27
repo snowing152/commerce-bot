@@ -5,6 +5,7 @@ import { DashboardPage, Task, LogEntry } from './pages';
 import { ErrorBoundary } from './ErrorBoundary';
 import { BotResult } from './types';
 import { LanguageProvider, useT } from './i18n';
+import { mergeNextRunAt } from './schedule-utils';
 
 interface EngineTask {
   keyword: string;
@@ -69,6 +70,7 @@ function DashboardApp() {
     params?: Record<string, string | number>;
   } | null>(null);
   const [user, setUser] = useState<{ first_name: string; photo_url: string | null } | null>(null);
+  const [subscriptionResult, setSubscriptionResult] = useState<SubscriptionResult | null>(null);
   const [results, setResults] = useState<BotResult[]>([]);
   const [liveResults, setLiveResults] = useState<BotResult[]>([]);
   const [screenshotPath, setScreenshotPath] = useState<string | null>(null);
@@ -90,10 +92,30 @@ function DashboardApp() {
         setInitialTasks([]);
       }
       setVersion(ver);
-      if (sub) setUser((sub as SubscriptionResult).user);
+      if (sub) {
+        const s = sub as SubscriptionResult;
+        setUser(s.user);
+        setSubscriptionResult(s);
+      }
       if (Array.isArray(savedResults)) setResults(savedResults as BotResult[]);
       if (schedule) setScheduleConfig(schedule as ScheduleConfig);
     });
+  }, []);
+
+  const refreshSubscription = () => {
+    window.api
+      .getSubscriptionStatus()
+      .then((s) => {
+        setUser(s.user);
+        setSubscriptionResult(s);
+      })
+      .catch(() => {});
+  };
+
+  // Re-check subscription every 30 minutes so expiry shows without a restart
+  useEffect(() => {
+    const id = setInterval(refreshSubscription, 30 * 60 * 1000);
+    return () => clearInterval(id);
   }, []);
 
   // Register all event listeners once; return all cleanups
@@ -107,6 +129,10 @@ function DashboardApp() {
       } catch {
         /* discard malformed payload */
       }
+    });
+    const unRunning = window.api.onRunning(() => {
+      setBotState('running');
+      setLiveResults([]);
     });
     const unDone = window.api.onDone((path) => {
       setBotState('idle');
@@ -123,13 +149,16 @@ function DashboardApp() {
       setLiveResults((prev) => [...prev, d as BotResult]);
     });
     const unProgress = window.api.onUpdateProgress((pct) => setUpdateProgress(pct));
+    const unSubUpdated = window.api.onSubscriptionUpdated(refreshSubscription);
     return () => {
+      unRunning();
       unLog();
       unDone();
       unStatus();
       unError();
       unResult();
       unProgress();
+      unSubUpdated();
     };
   }, []);
 
@@ -215,6 +244,7 @@ function DashboardApp() {
       onExportResults={handleExportResults}
       initialSchedule={scheduleConfig}
       onSaveSchedule={handleSaveSchedule}
+      subscriptionResult={subscriptionResult}
     />
   );
 }

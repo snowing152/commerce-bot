@@ -33,8 +33,10 @@ declare global {
       }): Promise<{ success: boolean; error?: string }>;
       getSchedule(): Promise<ScheduleConfig>;
       saveSchedule(cfg: Omit<ScheduleConfig, 'nextRunAt'>): Promise<{ success: boolean }>;
+      onScheduleUpdated(cb: (payload: { nextRunAt: string | null }) => void): () => void;
       // event listeners — all return an unsubscribe cleanup function
       onLog(cb: (msg: string) => void): () => void;
+      onRunning(cb: () => void): () => void;
       onDone(cb: (path: string | null) => void): () => void;
       onBotResult(cb: (data: unknown) => void): () => void;
       onUpdateProgress(cb: (percent: number) => void): () => void;
