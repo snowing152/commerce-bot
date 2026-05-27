@@ -1398,9 +1398,6 @@ function ReportModal({
 }
 
 const INTERVAL_OPTIONS: { label: string; value: number }[] = [
-  { label: '1 minute (test)', value: 1 / 60 },
-  { label: '1 hour', value: 1 },
-  { label: '2 hours', value: 2 },
   { label: '3 hours', value: 3 },
   { label: '6 hours', value: 6 },
   { label: '12 hours', value: 12 },
