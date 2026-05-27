@@ -150,6 +150,9 @@ function DashboardApp() {
     });
     const unProgress = window.api.onUpdateProgress((pct) => setUpdateProgress(pct));
     const unSubUpdated = window.api.onSubscriptionUpdated(refreshSubscription);
+    const unSchedule = window.api.onScheduleUpdated((s) =>
+      setScheduleConfig((prev) => mergeNextRunAt(prev, s.nextRunAt)),
+    );
     return () => {
       unRunning();
       unLog();
@@ -159,6 +162,7 @@ function DashboardApp() {
       unResult();
       unProgress();
       unSubUpdated();
+      unSchedule();
     };
   }, []);
 
