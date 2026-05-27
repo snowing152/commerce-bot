@@ -5,6 +5,7 @@ import { DashboardPage, Task, LogEntry } from './pages';
 import { ErrorBoundary } from './ErrorBoundary';
 import { BotResult } from './types';
 import { LanguageProvider, useT } from './i18n';
+import { mergeNextRunAt } from './schedule-utils';
 
 interface EngineTask {
   keyword: string;
@@ -123,7 +124,9 @@ function DashboardApp() {
       setLiveResults((prev) => [...prev, d as BotResult]);
     });
     const unProgress = window.api.onUpdateProgress((pct) => setUpdateProgress(pct));
-    const unSchedule = window.api.onScheduleUpdated((s: ScheduleConfig) => setScheduleConfig(s));
+    const unSchedule = window.api.onScheduleUpdated((s) =>
+      setScheduleConfig((prev) => mergeNextRunAt(prev, s.nextRunAt)),
+    );
     return () => {
       unLog();
       unDone();
