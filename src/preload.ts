@@ -16,6 +16,12 @@ contextBridge.exposeInMainWorld('api', {
     return () => ipcRenderer.removeListener('bot-done', handler);
   },
 
+  onRunning: (callback: () => void) => {
+    const handler = () => callback();
+    ipcRenderer.on('bot-running', handler);
+    return () => ipcRenderer.removeListener('bot-running', handler);
+  },
+
   onBotResult: (callback: (data: any) => void) => {
     const handler = (_e: IpcRendererEvent, data: any) => callback(data);
     ipcRenderer.on('bot-result', handler);
@@ -93,4 +99,9 @@ contextBridge.exposeInMainWorld('api', {
   getSchedule: () => ipcRenderer.invoke('get-schedule'),
   saveSchedule: (cfg: { enabled: boolean; intervalHours: number }) =>
     ipcRenderer.invoke('save-schedule', cfg),
+  onScheduleUpdated: (callback: (payload: { nextRunAt: string | null }) => void) => {
+    const handler = (_e: IpcRendererEvent, payload: any) => callback(payload);
+    ipcRenderer.on('schedule-updated', handler);
+    return () => ipcRenderer.removeListener('schedule-updated', handler);
+  },
 });

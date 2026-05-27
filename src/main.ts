@@ -62,6 +62,17 @@ let isQuitting = false;
 // ── Scheduler state ─────────────────────────────────────────
 let scheduleTimer: NodeJS.Timeout | null = null;
 let nextScheduledRun: Date | null = null;
+let schedulerGeneration = 0; // incremented on every startScheduler/clearScheduler call
+
+function sendScheduleUpdate(): void {
+  try {
+    if (win && !win.isDestroyed()) {
+      win.webContents.send('schedule-updated', { nextRunAt: nextScheduledRun?.toISOString() ?? null });
+    }
+  } catch {
+    // best-effort
+  }
+}
 
 // ── Config helpers ───────────────────────────────────────────
 function readConfig(): any {
@@ -72,6 +83,17 @@ function readConfig(): any {
 function writeConfig(cfg: any): void {
   const configPath = path.join(USER_DATA_PATH, 'config.json');
   fs.writeFileSync(configPath, JSON.stringify(cfg, null, 2), 'utf-8');
+}
+
+function loadSessionTasks(): any[] | null {
+  try {
+    const sessionPath = path.join(USER_DATA_PATH, SESSION_FILE_NAME);
+    if (!fs.existsSync(sessionPath)) return null;
+    const data = JSON.parse(fs.readFileSync(sessionPath, 'utf-8'));
+    return Array.isArray(data) && data.length > 0 ? data : null;
+  } catch {
+    return null;
+  }
 }
 
 // ── Shared bot runner ────────────────────────────────────────
@@ -88,6 +110,14 @@ async function triggerRun(
     if (tasksArray !== null) {
       config.tasks = tasksArray;
       writeConfig(config);
+    } else {
+      // Scheduler path: session.json always reflects the latest task list from the UI
+      // (including tasks added after the last manual Start). Prefer it over config.tasks.
+      const sessionTasks = loadSessionTasks();
+      if (sessionTasks) {
+        config.tasks = sessionTasks;
+        writeConfig(config); // keep config in sync
+      }
     }
     if (!Array.isArray(config.tasks) || config.tasks.length === 0) return;
 
@@ -126,11 +156,13 @@ async function triggerRun(
 const SCHEDULE_JITTER_PCT = 0.15; // ±15% — randomizes interval to avoid IP-ban patterns
 
 function clearScheduler(): void {
+  schedulerGeneration++; // invalidate any in-flight tick
   if (scheduleTimer) {
     clearTimeout(scheduleTimer);
     scheduleTimer = null;
   }
   nextScheduledRun = null;
+  sendScheduleUpdate();
 }
 
 function jitteredDelay(intervalHours: number): number {
@@ -140,13 +172,16 @@ function jitteredDelay(intervalHours: number): number {
 }
 
 function startScheduler(intervalHours: number): void {
-  clearScheduler();
+  clearScheduler(); // increments schedulerGeneration, cancels pending timer
+  const myGeneration = schedulerGeneration; // capture: this tick instance owns this generation
 
   const tick = async () => {
+    if (schedulerGeneration !== myGeneration) return; // superseded — bail out
     if (activeEngine) {
       // Bot already running — try again after a short delay
       const retryMs = 60_000;
       nextScheduledRun = new Date(Date.now() + retryMs);
+      sendScheduleUpdate();
       scheduleTimer = setTimeout(tick, retryMs);
       return;
     }
@@ -156,17 +191,23 @@ function startScheduler(intervalHours: number): void {
     if (Notification.isSupported()) {
       new Notification({ title: 'Coupang Bot', body: 'Scheduled search starting…' }).show();
     }
+    send('bot-running');
     await triggerRun(null, send);
+    // After the async run, re-check generation — startScheduler may have been called
+    // while the run was in progress (e.g. user changed interval mid-run).
+    if (schedulerGeneration !== myGeneration) return;
     if (Notification.isSupported()) {
       new Notification({ title: 'Coupang Bot', body: 'Scheduled search complete.' }).show();
     }
     const nextMs = jitteredDelay(intervalHours);
     nextScheduledRun = new Date(Date.now() + nextMs);
+    sendScheduleUpdate();
     scheduleTimer = setTimeout(tick, nextMs);
   };
 
   const firstMs = jitteredDelay(intervalHours);
   nextScheduledRun = new Date(Date.now() + firstMs);
+  sendScheduleUpdate();
   scheduleTimer = setTimeout(tick, firstMs);
 }
 

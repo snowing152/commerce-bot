@@ -56,6 +56,9 @@ const en: Dict = {
   'sub.loading': 'Loading subscription…',
   'sub.loadError': 'Could not load subscription',
   'sub.loadErrorFallback': 'Could not load subscription data.',
+  'sub.expiredBanner': "Subscription expired — the bot won't run until renewed.",
+  'sub.expiresWarning': 'Subscription expires in {n} days.',
+  'sub.renewNow': 'Renew now',
 
   // Dashboard topbar
   'top.subscription': 'Subscription',
@@ -78,6 +81,7 @@ const en: Dict = {
   // Dashboard right panel
   'panel.log': 'Live Log',
   'panel.results': 'Results',
+  'panel.progress': 'Progress',
   'panel.sendTg': 'TG',
   'panel.clear': 'Clear',
   'panel.exportCsv': 'Export CSV',
@@ -204,6 +208,9 @@ const ru: Dict = {
   'sub.loading': 'Загрузка подписки…',
   'sub.loadError': 'Не удалось загрузить подписку',
   'sub.loadErrorFallback': 'Не удалось получить данные подписки.',
+  'sub.expiredBanner': 'Подписка истекла — бот не запустится без продления.',
+  'sub.expiresWarning': 'Подписка истекает через {n} дней.',
+  'sub.renewNow': 'Продлить',
 
   // Dashboard topbar
   'top.subscription': 'Подписка',
@@ -226,6 +233,7 @@ const ru: Dict = {
   // Dashboard right panel
   'panel.log': 'Лог',
   'panel.results': 'Результаты',
+  'panel.progress': 'Прогресс',
   'panel.sendTg': 'TG',
   'panel.clear': 'Очистить',
   'panel.exportCsv': 'Экспорт CSV',
