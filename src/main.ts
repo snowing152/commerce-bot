@@ -64,6 +64,16 @@ let scheduleTimer: NodeJS.Timeout | null = null;
 let nextScheduledRun: Date | null = null;
 let schedulerGeneration = 0; // incremented on every startScheduler/clearScheduler call
 
+function sendScheduleUpdate(): void {
+  try {
+    if (win && !win.isDestroyed()) {
+      win.webContents.send('schedule-updated', { nextRunAt: nextScheduledRun?.toISOString() ?? null });
+    }
+  } catch {
+    // best-effort
+  }
+}
+
 // ── Config helpers ───────────────────────────────────────────
 function readConfig(): any {
   const configPath = path.join(USER_DATA_PATH, 'config.json');
@@ -152,6 +162,7 @@ function clearScheduler(): void {
     scheduleTimer = null;
   }
   nextScheduledRun = null;
+  sendScheduleUpdate();
 }
 
 function jitteredDelay(intervalHours: number): number {
@@ -170,6 +181,7 @@ function startScheduler(intervalHours: number): void {
       // Bot already running — try again after a short delay
       const retryMs = 60_000;
       nextScheduledRun = new Date(Date.now() + retryMs);
+      sendScheduleUpdate();
       scheduleTimer = setTimeout(tick, retryMs);
       return;
     }
@@ -189,11 +201,13 @@ function startScheduler(intervalHours: number): void {
     }
     const nextMs = jitteredDelay(intervalHours);
     nextScheduledRun = new Date(Date.now() + nextMs);
+    sendScheduleUpdate();
     scheduleTimer = setTimeout(tick, nextMs);
   };
 
   const firstMs = jitteredDelay(intervalHours);
   nextScheduledRun = new Date(Date.now() + firstMs);
+  sendScheduleUpdate();
   scheduleTimer = setTimeout(tick, firstMs);
 }
 

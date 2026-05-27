@@ -5,6 +5,7 @@ import { DashboardPage, Task, LogEntry } from './pages';
 import { ErrorBoundary } from './ErrorBoundary';
 import { BotResult } from './types';
 import { LanguageProvider, useT } from './i18n';
+import { mergeNextRunAt } from './schedule-utils';
 
 interface EngineTask {
   keyword: string;

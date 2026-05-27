@@ -99,4 +99,9 @@ contextBridge.exposeInMainWorld('api', {
   getSchedule: () => ipcRenderer.invoke('get-schedule'),
   saveSchedule: (cfg: { enabled: boolean; intervalHours: number }) =>
     ipcRenderer.invoke('save-schedule', cfg),
+  onScheduleUpdated: (callback: (payload: { nextRunAt: string | null }) => void) => {
+    const handler = (_e: IpcRendererEvent, payload: any) => callback(payload);
+    ipcRenderer.on('schedule-updated', handler);
+    return () => ipcRenderer.removeListener('schedule-updated', handler);
+  },
 });
