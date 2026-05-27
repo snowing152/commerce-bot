@@ -56,6 +56,9 @@ const en: Dict = {
   'sub.loading': 'Loading subscription…',
   'sub.loadError': 'Could not load subscription',
   'sub.loadErrorFallback': 'Could not load subscription data.',
+  'sub.expiredBanner': "Subscription expired — the bot won't run until renewed.",
+  'sub.expiresWarning': 'Subscription expires in {n} days.',
+  'sub.renewNow': 'Renew now',
 
   // Dashboard topbar
   'top.subscription': 'Subscription',
@@ -205,6 +208,9 @@ const ru: Dict = {
   'sub.loading': 'Загрузка подписки…',
   'sub.loadError': 'Не удалось загрузить подписку',
   'sub.loadErrorFallback': 'Не удалось получить данные подписки.',
+  'sub.expiredBanner': 'Подписка истекла — бот не запустится без продления.',
+  'sub.expiresWarning': 'Подписка истекает через {n} дней.',
+  'sub.renewNow': 'Продлить',
 
   // Dashboard topbar
   'top.subscription': 'Подписка',

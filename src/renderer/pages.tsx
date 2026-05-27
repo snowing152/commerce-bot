@@ -355,6 +355,7 @@ export interface DashboardPageProps {
   onExportResults?: () => void;
   initialSchedule?: ScheduleConfig | null;
   onSaveSchedule?: (cfg: Omit<ScheduleConfig, 'nextRunAt'>) => Promise<void>;
+  subscriptionResult?: SubscriptionResult | null;
 }
 
 const seedLogs = (count = 40): LogEntry[] => {
@@ -398,6 +399,7 @@ export function DashboardPage({
   onExportResults,
   initialSchedule,
   onSaveSchedule,
+  subscriptionResult,
 }: DashboardPageProps) {
   const { t } = useT();
   const [tasks, setTasks] = useState<Task[]>(() => initialTasks ?? []);
@@ -504,13 +506,18 @@ export function DashboardPage({
     return () => window.removeEventListener('keydown', onKey);
   }, []);
 
-  const addTask = useCallback((task: Omit<Task, 'id' | 'status'>) => {
-    setTasks((prev) => {
-      const next: Task = { ...task, id: `t${prev.length + 1}`, status: 'idle' };
-      return [...prev, next];
-    });
-    setShowNewTask(false);
-  }, []);
+  const addTask = useCallback(
+    (task: Omit<Task, 'id' | 'status'>) => {
+      setTasks((prev) => {
+        const next: Task = { ...task, id: `t${prev.length + 1}`, status: 'idle' };
+        const all = [...prev, next];
+        onTasksChanged?.(all);
+        return all;
+      });
+      setShowNewTask(false);
+    },
+    [onTasksChanged],
+  );
 
   useEffect(() => {
     if (!autoscroll) return;
@@ -645,6 +652,40 @@ export function DashboardPage({
           </Button>
         </div>
       </header>
+
+      {/* SUBSCRIPTION BANNER */}
+      {subscriptionResult?.status === 'expired' && (
+        <div className="shrink-0 flex items-center justify-between gap-3 px-4 py-2 bg-red-500/10 border-b border-red-500/20">
+          <div className="flex items-center gap-2">
+            <Icon name="alert" className="w-3.5 h-3.5 text-red-400 shrink-0" />
+            <span className="text-[12px] text-red-300">{t('sub.expiredBanner')}</span>
+          </div>
+          <button
+            onClick={onOpenSubscription}
+            className="shrink-0 text-[11px] font-medium text-red-300 hover:text-red-100 border border-red-500/30 hover:border-red-400/50 rounded px-2.5 py-0.5 transition-colors"
+          >
+            {t('sub.renewNow')}
+          </button>
+        </div>
+      )}
+      {subscriptionResult?.status !== 'expired' &&
+        subscriptionResult?.daysLeft != null &&
+        subscriptionResult.daysLeft <= 3 && (
+          <div className="shrink-0 flex items-center justify-between gap-3 px-4 py-2 bg-amber-500/10 border-b border-amber-500/20">
+            <div className="flex items-center gap-2">
+              <Icon name="alert" className="w-3.5 h-3.5 text-amber-400 shrink-0" />
+              <span className="text-[12px] text-amber-300">
+                {t('sub.expiresWarning', { n: subscriptionResult.daysLeft })}
+              </span>
+            </div>
+            <button
+              onClick={onOpenSubscription}
+              className="shrink-0 text-[11px] font-medium text-amber-300 hover:text-amber-100 border border-amber-500/30 hover:border-amber-400/50 rounded px-2.5 py-0.5 transition-colors"
+            >
+              {t('sub.renewNow')}
+            </button>
+          </div>
+        )}
 
       {/* MAIN GRID */}
       <div className="flex-1 min-h-0 grid grid-cols-[minmax(320px,36%)_1fr]">
