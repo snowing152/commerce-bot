@@ -13,6 +13,7 @@ import {
   Wordmark,
 } from './components';
 import { BotResult } from './types';
+import { RankingStat, computeRankingStats } from './ranking-utils';
 import { LanguageSwitcher, useT } from './i18n';
 
 /* ============================================================ */
@@ -35,31 +36,6 @@ export interface LogEntry {
   level: string;
   source: string;
   message: string;
-}
-
-/* ---- Promotion Progress ---- */
-interface RankPoint {
-  page: number;
-  pos: number;
-}
-interface RankingStat {
-  keyword: string;
-  targetName: string;
-  first: RankPoint;
-  latest: RankPoint;
-  pageImprovement: number;
-  posImprovement: number;
-  history: RankPoint[];
-  runCount: number;
-}
-
-function parseLocation(location: string): RankPoint | null {
-  const m = location.match(/page\s+(\d+)\s+position\s+(\d+)/i);
-  if (!m) return null;
-  const page = parseInt(m[1], 10),
-    pos = parseInt(m[2], 10);
-  if (isNaN(page) || isNaN(pos) || page < 1 || pos < 1) return null;
-  return { page, pos };
 }
 
 /* ============================================================ */
@@ -104,7 +80,7 @@ export function AuthPage({ status, onStatusChange, onAuthenticated, onLoginClick
           <Wordmark size="lg" />
         </div>
 
-        <Card className="w-full p-7">
+        <Card fullWidth padding="lg">
           <div className="flex flex-col items-center text-center">
             <h1 className="text-[18px] font-semibold tracking-tight text-zinc-100 mb-1.5">
               {t('auth.signInTitle')}
@@ -146,7 +122,7 @@ export function AuthPage({ status, onStatusChange, onAuthenticated, onLoginClick
                 }`}
               >
                 <div className="flex items-center gap-2.5">
-                  {status === 'waiting' && <Spinner size={13} className="text-amber-300" />}
+                  {status === 'waiting' && <Spinner size={13} tone="warn" />}
                   {status === 'confirmed' && (
                     <Icon name="check" className="w-3.5 h-3.5 text-emerald-300" />
                   )}
@@ -235,7 +211,7 @@ export function SubscriptionPage({
           <p className="text-[13px] text-zinc-500 mt-1">{t('sub.subtitle')}</p>
         </div>
 
-        <Card className="overflow-hidden">
+        <Card clip>
           <div className="px-5 py-5 flex items-start justify-between gap-4 border-b border-zinc-800/70">
             <div className="flex items-start gap-3">
               <div className="w-9 h-9 rounded-md bg-zinc-800/80 border border-zinc-700/50 grid place-items-center text-zinc-300">
@@ -456,40 +432,7 @@ export function DashboardPage({
     return groups;
   }, [results]);
 
-  const rankingStats = useMemo((): RankingStat[] => {
-    const map = new Map<string, BotResult[]>();
-    for (const r of results) {
-      const key = `${r.keyword}|||${r.targetName}`;
-      const b = map.get(key);
-      b ? b.push(r) : map.set(key, [r]);
-    }
-    const stats: RankingStat[] = [];
-    for (const [, bucket] of map) {
-      const parsed = bucket
-        .map((r) => ({ pt: parseLocation(r.location), id: r.id }))
-        .filter((x): x is { pt: RankPoint; id: number } => x.pt !== null)
-        .sort((a, b) => a.id - b.id);
-      if (parsed.length < 2) continue;
-      const history = parsed.map((x) => x.pt);
-      const first = history[0],
-        latest = history[history.length - 1];
-      stats.push({
-        keyword: bucket[0].keyword,
-        targetName: bucket[0].targetName,
-        first,
-        latest,
-        pageImprovement: first.page - latest.page,
-        posImprovement: first.pos - latest.pos,
-        history,
-        runCount: parsed.length,
-      });
-    }
-    return stats.sort((a, b) =>
-      b.pageImprovement !== a.pageImprovement
-        ? b.pageImprovement - a.pageImprovement
-        : b.posImprovement - a.posImprovement,
-    );
-  }, [results]);
+  const rankingStats = useMemo(() => computeRankingStats(results), [results]);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {

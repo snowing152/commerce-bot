@@ -208,15 +208,33 @@ export const Input = forwardRef<HTMLInputElement, React.InputHTMLAttributes<HTML
 Input.displayName = 'Input';
 
 /* ---------- Card ---------- */
+export interface CardProps extends Omit<React.HTMLAttributes<HTMLDivElement>, 'className'> {
+  padding?: 'none' | 'sm' | 'md' | 'lg';
+  clip?: boolean;
+  fullWidth?: boolean;
+}
+
 export const Card = ({
-  className = '',
+  padding = 'none',
+  clip = false,
+  fullWidth = false,
   children,
   ...props
-}: React.HTMLAttributes<HTMLDivElement>) => (
-  <div className={`rounded-lg border border-zinc-800/80 bg-zinc-900/40 ${className}`} {...props}>
-    {children}
-  </div>
-);
+}: CardProps) => {
+  const cls = [
+    'rounded-lg border border-zinc-800/80 bg-zinc-900/40',
+    fullWidth && 'w-full',
+    { none: '', sm: 'p-3', md: 'p-5', lg: 'p-7' }[padding],
+    clip && 'overflow-hidden',
+  ]
+    .filter(Boolean)
+    .join(' ');
+  return (
+    <div className={cls} {...props}>
+      {children}
+    </div>
+  );
+};
 
 /* ---------- StatusBadge ---------- */
 type BadgeStatus =
@@ -380,21 +398,30 @@ export const ProgressBar = ({
 /* ---------- Spinner ---------- */
 export interface SpinnerProps {
   size?: number;
-  className?: string;
+  tone?: 'current' | 'warn' | 'success' | 'danger' | 'muted';
 }
 
-export const Spinner = ({ size = 14, className = '' }: SpinnerProps) => (
-  <svg
-    width={size}
-    height={size}
-    viewBox="0 0 24 24"
-    className={`animate-spin ${className}`}
-    fill="none"
-  >
-    <circle cx="12" cy="12" r="9" stroke="currentColor" strokeOpacity="0.18" strokeWidth="2.5" />
-    <path d="M12 3a9 9 0 0 1 9 9" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" />
-  </svg>
-);
+export const Spinner = ({ size = 14, tone = 'current' }: SpinnerProps) => {
+  const toneClass = {
+    current: '',
+    warn: 'text-amber-300',
+    success: 'text-emerald-300',
+    danger: 'text-red-300',
+    muted: 'text-zinc-500',
+  }[tone];
+  return (
+    <svg
+      width={size}
+      height={size}
+      viewBox="0 0 24 24"
+      className={toneClass ? `animate-spin ${toneClass}` : 'animate-spin'}
+      fill="none"
+    >
+      <circle cx="12" cy="12" r="9" stroke="currentColor" strokeOpacity="0.18" strokeWidth="2.5" />
+      <path d="M12 3a9 9 0 0 1 9 9" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" />
+    </svg>
+  );
+};
 
 /* ---------- Kbd ---------- */
 export const Kbd = ({ children }: { children: React.ReactNode }) => (
