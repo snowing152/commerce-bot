@@ -80,7 +80,7 @@ export function AuthPage({ status, onStatusChange, onAuthenticated, onLoginClick
           <Wordmark size="lg" />
         </div>
 
-        <Card className="w-full p-7">
+        <Card fullWidth padding="lg">
           <div className="flex flex-col items-center text-center">
             <h1 className="text-[18px] font-semibold tracking-tight text-zinc-100 mb-1.5">
               {t('auth.signInTitle')}
@@ -122,7 +122,7 @@ export function AuthPage({ status, onStatusChange, onAuthenticated, onLoginClick
                 }`}
               >
                 <div className="flex items-center gap-2.5">
-                  {status === 'waiting' && <Spinner size={13} className="text-amber-300" />}
+                  {status === 'waiting' && <Spinner size={13} tone="warn" />}
                   {status === 'confirmed' && (
                     <Icon name="check" className="w-3.5 h-3.5 text-emerald-300" />
                   )}
@@ -211,7 +211,7 @@ export function SubscriptionPage({
           <p className="text-[13px] text-zinc-500 mt-1">{t('sub.subtitle')}</p>
         </div>
 
-        <Card className="overflow-hidden">
+        <Card clip>
           <div className="px-5 py-5 flex items-start justify-between gap-4 border-b border-zinc-800/70">
             <div className="flex items-start gap-3">
               <div className="w-9 h-9 rounded-md bg-zinc-800/80 border border-zinc-700/50 grid place-items-center text-zinc-300">
