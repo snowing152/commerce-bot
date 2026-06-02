@@ -273,14 +273,23 @@ export class AutomationEngine {
     if (selectors.length > 0) {
       const result = await page
         .evaluate(
-          ({ selectors, target }) => {
-            // Normalize: NFC + collapse whitespace + remove spaces around slashes
+          ({
+            selectors,
+            target,
+            wsRe,
+            slashRe,
+          }: {
+            selectors: string[];
+            target: string;
+            wsRe: string;
+            slashRe: string;
+          }) => {
+            // Reconstruct regexes from the shared rule sources in Matcher (the
+            // serialization boundary prevents importing, so they are passed as params).
+            const normWs = new RegExp(wsRe, 'g');
+            const normSlash = new RegExp(slashRe, 'g');
             const norm = (s: string) =>
-              s
-                .normalize('NFC')
-                .replace(/\s+/g, ' ')
-                .replace(/\s*\/\s*/g, '/')
-                .trim();
+              s.normalize('NFC').replace(normWs, ' ').replace(normSlash, '/').trim();
             const wanted = norm(target);
             const found: string[] = [];
             const PER_BUCKET = 8;
@@ -309,7 +318,12 @@ export class AutomationEngine {
             }
             return { clicked: false, candidates: found };
           },
-          { selectors, target: label },
+          {
+            selectors,
+            target: label,
+            wsRe: Matcher.NORM_WHITESPACE_RE,
+            slashRe: Matcher.NORM_SLASH_RE,
+          },
         )
         .catch(() => ({ clicked: false, candidates: [] as string[] }));
 
@@ -713,20 +727,47 @@ export class AutomationEngine {
               await Humanizer.wait(400, 800);
 
               this.logStep('ACTION', `PAGE ${pageNum} clicking card #${cardNumber}`, 'run');
-              const anchor = await this.firstVisible(card, 'a', 3000);
+              // Click the product-detail link specifically (keyed on the
+              // /vp/products/ URL contract), never an arbitrary <a> — a card can
+              // also hold wishlist/ad/coupon anchors, and clicking one would add the
+              // WRONG product to the cart while screenshotting it as success. If no
+              // product-detail anchor is present we skip rather than guess.
+              const anchor = await this.firstVisible(card, Matcher.PRODUCT_ANCHOR_SELECTOR, 3000);
               if (!anchor) {
                 this.logStep(
-                  'ERROR',
-                  `PAGE ${pageNum} card #${cardNumber} has no visible anchor — skipping`,
+                  'WARN',
+                  `PAGE ${pageNum} card #${cardNumber} matched but has no visible product-detail link — skipping to avoid clicking the wrong product`,
                   'run',
                 );
                 continue;
+              }
+              // Extract the productId from the anchor we are about to click so the
+              // logged id and the click target are guaranteed to be the same element.
+              const anchorHref = await anchor.getAttribute('href').catch(() => null);
+              const productId = Matcher.extractProductId(anchorHref);
+              if (productId) {
+                this.logStep(
+                  'DEBUG',
+                  `PAGE ${pageNum} card #${cardNumber} productId=${productId}`,
+                  'run',
+                );
               }
               const [np] = await Promise.all([ctx.waitForEvent('page'), anchor.click()]);
               await np.waitForLoadState('load', { timeout: 30000 });
               await Humanizer.wait(1500, 2500);
 
               this.logStep('INFO', `Product page loaded: ${np.url()}`, 'run');
+              // Confirm the click landed on the matched product. Log a WARN if the
+              // navigated productId differs from the one we clicked — signals an
+              // unexpected server-side redirect between two distinct products.
+              const navProductId = Matcher.extractProductId(np.url());
+              if (Matcher.productIdMismatch(productId, navProductId)) {
+                this.logStep(
+                  'WARN',
+                  `PAGE ${pageNum} card #${cardNumber} navigated to productId=${navProductId} but clicked productId=${productId} — unexpected redirect`,
+                  'run',
+                );
+              }
               this.logStep('INFO', 'Reading product page.', 'run');
               await Humanizer.simulateReading(np, 15000, 20000);
 
